@@ -203,8 +203,16 @@ internal static class ProgressStore
             try
             {
                 using var connection = OpenDatabase();
-                using var command = new SqlCommand("DELETE dbo.ExpeditionSave WHERE ProfileId=1; DELETE dbo.ExpeditionShardSave WHERE ProfileId=1; DELETE dbo.ExpeditionEnemySave WHERE ProfileId=1; DELETE dbo.ExpeditionTrapSave WHERE ProfileId=1;", connection);
-                command.ExecuteNonQuery(); SqlAvailable = true;
+                using var transaction = connection.BeginTransaction();
+                using var command = new SqlCommand(
+                    "DELETE dbo.ExpeditionSave WHERE ProfileId=1; " +
+                    "DELETE dbo.ExpeditionShardSave WHERE ProfileId=1; " +
+                    "DELETE dbo.ExpeditionEnemySave WHERE ProfileId=1; " +
+                    "DELETE dbo.ExpeditionTrapSave WHERE ProfileId=1;",
+                    connection, transaction);
+                command.ExecuteNonQuery();
+                transaction.Commit();
+                SqlAvailable = true;
             }
             catch (Exception ex) when (IsSqlFailure(ex))
             {

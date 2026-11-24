@@ -7,7 +7,7 @@ Proyecto independiente de **NEXUS**, concebido como una aventura 2D de cazadores
 Requiere Windows, el SDK de .NET 10 con Windows Forms y una instancia de SQL Server LocalDB o SQL Server Express en ejecución. Clona el repositorio y ejecuta la restauración desde la carpeta recién creada (la misma que contiene `NexusCopy.sln`):
 
 ```powershell
-git clone https://github.com/estluismiguelyucrate-blip/repooooo.git
+git clone https://github.com/estluismiguelyucrate-blip/NEXUS_MEJORADO_AL_100.git
 cd repooooo
 dotnet restore .\NexusCopy.sln
 dotnet run --project .\NexusCopia.csproj
@@ -82,7 +82,7 @@ El juego sintetiza una banda sonora original de fantasía con energía de anime:
 
 El progreso y las partidas se guardan **exclusivamente en SQL Server**, en la base `NexusCopyDb`. El perfil usa `dbo.HunterProgress`; las partidas usan `dbo.ExpeditionSave` y sus tablas relacionadas para fragmentos, centinelas y trampas. SQL Server LocalDB es la conexión predeterminada. Al iniciar, el juego crea las tablas necesarias si aún no existen. No usa archivos JSON ni otro almacenamiento para el progreso o las partidas. Si SQL Server no está instalado, iniciado o accesible, el juego muestra un error y no inicia una partida que no pueda guardar.
 
-La aplicación y su esquema SQL se implementan en C#. Al iniciarla, crea la base y sus tablas si la cuenta tiene permisos. Si vas a compilar desde Visual Studio, asegúrate de restaurar los paquetes NuGet y de tener iniciada la instancia `MSSQLLocalDB`.
+La aplicación y su esquema SQL se implementan en C#. Al iniciarla, crea la base y sus tablas si la cuenta tiene permisos. Como alternativa de reconstrucción manual, ejecuta `sql/001-crear-nexuscopy.sql` en SQL Server Management Studio con una cuenta que pueda crear la base y las tablas. Si vas a compilar desde Visual Studio, asegúrate de restaurar los paquetes NuGet y de tener iniciada la instancia `MSSQLLocalDB`.
 
 Para una instancia de SQL Server distinta, define `NEXUS_SQLSERVER_CONNECTION` antes de iniciar el juego. Ejemplo para SQL Server Express:
 
