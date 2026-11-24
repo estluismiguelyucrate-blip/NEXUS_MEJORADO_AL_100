@@ -1,32 +1,39 @@
 using System.Drawing.Drawing2D;
 using System.Diagnostics;
+using System.ComponentModel;
 
 namespace NexusCopia;
 
 /// <summary>Menú interactivo compuesto sobre el arte de referencia de Nexus Copy.</summary>
-internal sealed class MainMenuForm : Form
+internal sealed partial class MainMenuForm : Form
 {
     private const float DesignWidth = 1360;
     private const float DesignHeight = 768;
-    private readonly HunterProgress _profile = ProgressStore.Load();
-    private readonly OriginalMusic _music = new();
-    private readonly Image _menuBackground;
-    private readonly Image _hunterSprite;
-    private readonly System.Windows.Forms.Timer _idleTimer;
-    private readonly Stopwatch _animationClock = Stopwatch.StartNew();
-    private readonly Pen _auraOuter = new(Color.FromArgb(24, 210, 111, 255), 25);
-    private readonly Pen _auraInner = new(Color.FromArgb(34, 171, 82, 255), 13);
-    private readonly Pen _swordGlow = new(Color.FromArgb(60, 155, 68, 255), 16) { StartCap = LineCap.Round, EndCap = LineCap.Round };
-    private readonly Pen _swordEdge = new(Color.FromArgb(180, 206, 142, 255), 4) { StartCap = LineCap.Round, EndCap = LineCap.Round };
-    private readonly Pen _swordCore = new(Color.FromArgb(220, 238, 226, 255), 1.6f) { StartCap = LineCap.Round, EndCap = LineCap.Round };
-    private readonly SolidBrush[] _moteBrushes = Enumerable.Range(0, 4)
-        .Select(i => new SolidBrush(Color.FromArgb(110 + i * 35, 190, 126, 255))).ToArray();
+    private HunterProgress _profile = new();
+    private OriginalMusic _music = null!;
+    private Image _menuBackground = null!;
+    private Image _hunterSprite = null!;
+    private System.Windows.Forms.Timer _idleTimer = null!;
+    private Stopwatch _animationClock = null!;
+    private Pen _auraOuter = null!, _auraInner = null!, _swordGlow = null!, _swordEdge = null!, _swordCore = null!;
+    private SolidBrush[] _moteBrushes = [];
+    private ExpeditionSave? _savedExpedition;
     private int _selectedDungeon;
     private int _selectedDifficulty = 1;
-    private string _hovered = "";
 
     public MainMenuForm()
     {
+        InitializeComponent();
+        if (LicenseManager.UsageMode == LicenseUsageMode.Designtime) return;
+        _profile = ProgressStore.Load();
+        _music = new OriginalMusic();
+        _animationClock = Stopwatch.StartNew();
+        _auraOuter = new Pen(Color.FromArgb(24, 210, 111, 255), 25);
+        _auraInner = new Pen(Color.FromArgb(34, 171, 82, 255), 13);
+        _swordGlow = new Pen(Color.FromArgb(60, 155, 68, 255), 16) { StartCap = LineCap.Round, EndCap = LineCap.Round };
+        _swordEdge = new Pen(Color.FromArgb(180, 206, 142, 255), 4) { StartCap = LineCap.Round, EndCap = LineCap.Round };
+        _swordCore = new Pen(Color.FromArgb(220, 238, 226, 255), 1.6f) { StartCap = LineCap.Round, EndCap = LineCap.Round };
+        _moteBrushes = Enumerable.Range(0, 4).Select(i => new SolidBrush(Color.FromArgb(110 + i * 35, 190, 126, 255))).ToArray();
         Text = "NEXUS COPY | Cazadores del Umbral";
         ClientSize = new Size(1360, 768);
         MinimumSize = new Size(900, 540);
@@ -53,16 +60,21 @@ internal sealed class MainMenuForm : Form
         };
         _idleTimer.Start();
         _selectedDungeon = Math.Clamp(_profile.ClearedDungeons, 0, DungeonCatalog.All.Length - 1);
-
-        MouseMove += HandleMouseMove;
-        MouseLeave += (_, _) => { _hovered = ""; Cursor = Cursors.Default; Invalidate(); };
-        MouseClick += HandleMenuClick;
+        _savedExpedition = ProgressStore.LoadExpedition();
+        UpdateMenuControls();
+        btnPlay.Click += (_, _) => StartDungeon();
+        btnContinue.Click += (_, _) => ContinueExpedition();
+        btnDungeon.Click += (_, _) => CycleDungeon();
+        btnHunter.Click += (_, _) => ChangeHunter();
+        btnDifficulty.Click += (_, _) => CycleDifficulty();
+        btnSettings.Click += (_, _) => ShowSettings();
+        btnControls.Click += (_, _) => ShowControls();
         KeyDown += HandleKeyDown;
         _music.PlayMenu();
         FormClosed += (_, _) =>
         {
-            _idleTimer.Stop(); _idleTimer.Dispose(); _music.Dispose(); _menuBackground.Dispose(); _hunterSprite.Dispose();
-            _auraOuter.Dispose(); _auraInner.Dispose(); _swordGlow.Dispose(); _swordEdge.Dispose(); _swordCore.Dispose();
+            _idleTimer?.Stop(); _idleTimer?.Dispose(); _music.Dispose(); _menuBackground?.Dispose(); _hunterSprite?.Dispose();
+            _auraOuter?.Dispose(); _auraInner?.Dispose(); _swordGlow?.Dispose(); _swordEdge?.Dispose(); _swordCore?.Dispose();
             foreach (var brush in _moteBrushes) brush.Dispose();
         };
     }
@@ -74,9 +86,7 @@ internal sealed class MainMenuForm : Form
         else if (e.KeyCode == Keys.Enter) { StartDungeon(); e.Handled = true; }
         else if (e.KeyCode is Keys.Left or Keys.Right)
         {
-            int direction = e.KeyCode == Keys.Right ? 1 : -1;
-            _selectedDungeon = (_selectedDungeon + direction + DungeonCatalog.All.Length) % DungeonCatalog.All.Length;
-            Invalidate(); e.Handled = true;
+            CycleDungeon(); e.Handled = true;
         }
         else if (e.KeyCode == Keys.C)
         {
@@ -88,51 +98,21 @@ internal sealed class MainMenuForm : Form
         }
     }
 
-    private void HandleMouseMove(object? sender, MouseEventArgs e)
+    private void CycleDungeon()
     {
-        PointF p = ToDesignPoint(e.Location);
-        string current = HitTest(p);
-        if (current != _hovered)
-        {
-            _hovered = current;
-            Cursor = current.Length > 0 ? Cursors.Hand : Cursors.Default;
-            Invalidate();
-        }
+        _selectedDungeon = (_selectedDungeon + 1) % DungeonCatalog.All.Length;
+        UpdateMenuControls();
+        Invalidate();
     }
 
-    private void HandleMenuClick(object? sender, MouseEventArgs e)
+    private void UpdateMenuControls()
     {
-        string action = HitTest(ToDesignPoint(e.Location));
-        switch (action)
-        {
-            case "music": ToggleMusic(); break;
-            case "play": StartDungeon(); break;
-            case "dungeon":
-                _selectedDungeon = (_selectedDungeon + 1) % DungeonCatalog.All.Length;
-                Invalidate();
-                break;
-            case "hunter": ChangeHunter(); break;
-            case "difficulty": CycleDifficulty(); break;
-            case "settings": ShowSettings(); break;
-            case "controls": ShowControls(); break;
-        }
-    }
-
-    private PointF ToDesignPoint(Point point) => new(
-        point.X * DesignWidth / Math.Max(1, ClientSize.Width),
-        point.Y * DesignHeight / Math.Max(1, ClientSize.Height));
-
-    private string HitTest(PointF p)
-    {
-        // The reference artwork is 1360×768. Coordinates match the visible artwork buttons.
-        if (new RectangleF(10, 7, 135, 42).Contains(p)) return "music";
-        if (new RectangleF(42, 290, 370, 69).Contains(p)) return "play";
-        if (new RectangleF(42, 365, 370, 66).Contains(p)) return "dungeon";
-        if (new RectangleF(42, 435, 370, 64).Contains(p)) return "hunter";
-        if (new RectangleF(42, 505, 370, 65).Contains(p)) return "settings";
-        if (new RectangleF(42, 575, 370, 69).Contains(p)) return "controls";
-        if (new RectangleF(42, 650, 370, 65).Contains(p)) return "difficulty";
-        return "";
+        btnDungeon.Text = $"MAZMORRA · {_selectedDungeon + 1}/{DungeonCatalog.All.Length}\n{DungeonCatalog.All[_selectedDungeon].Name}";
+        btnHunter.Text = $"CAZADOR · {_profile.Hunter.Name}\n{_profile.Hunter.ClassName} · {_profile.Hunter.AbilityName}";
+        DifficultyDefinition selected = DifficultyCatalog.All[_selectedDifficulty];
+        btnDifficulty.Text = $"DIFICULTAD · {selected.Name}\n{(_selectedDifficulty == 0 ? "5 vidas · enemigos accesibles" : _selectedDifficulty == 2 ? "2 vidas · jefes resistentes" : "3 vidas · desafío equilibrado")}";
+        btnContinue.Visible = _savedExpedition is not null;
+        lblSqlStatus.Text = $"{ProgressStore.StorageStatus} · GUARDADO AUTOMÁTICO EN SQL";
     }
 
     private void ToggleMusic()
@@ -144,6 +124,7 @@ internal sealed class MainMenuForm : Form
     private void CycleDifficulty()
     {
         _selectedDifficulty = (_selectedDifficulty + 1) % DifficultyCatalog.All.Length;
+        UpdateMenuControls();
         Invalidate();
     }
 
@@ -158,6 +139,7 @@ internal sealed class MainMenuForm : Form
             _profile.HunterId = previous;
             MessageBox.Show(this, ex.Message, "No se pudo guardar en SQL Server", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
+        UpdateMenuControls();
         Invalidate();
     }
 
@@ -181,29 +163,52 @@ internal sealed class MainMenuForm : Form
 
     private void ShowControls() => MessageBox.Show(this,
         "A / D o flechas: moverse · Espacio / W / ↑: saltar · J / X: atacar\n" +
-        "Flechas izquierda/derecha en el menú: cambiar mazmorra · Enter: entrar\nM: música · C: cazador · V: dificultad · Esc: volver al menú\n\n" +
-        "Explora la falla, reúne ecos y derrota al jefe. Cada victoria concede experiencia y créditos " +
-        "para subir de rango desde E hasta S. El progreso se guarda automáticamente.",
+        "Flechas izquierda/derecha: cambiar mazmorra · Enter: entrar · V: dificultad\nF5: guardar en SQL · Esc: guardar y volver al menú\n\n" +
+        "La partida guarda posición, checkpoints, fragmentos, enemigos, trampas, jefe, vidas y dificultad. " +
+        "Usa CONTINUAR PARTIDA para reanudarla.",
         "Guía del cazador", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
     private void StartDungeon()
     {
         using var game = new PlatformerForm(_selectedDungeon, _selectedDifficulty, _profile, _music);
         game.ShowDialog(this);
+        RefreshSavedExpedition();
         Invalidate();
+    }
+
+    private void ContinueExpedition()
+    {
+        if (_savedExpedition is null) return;
+        ExpeditionSave save = _savedExpedition;
+        using var game = new PlatformerForm(save.DungeonIndex, save.DifficultyIndex, _profile, _music, save);
+        game.ShowDialog(this);
+        RefreshSavedExpedition();
+        Invalidate();
+    }
+
+    private void RefreshSavedExpedition()
+    {
+        try { _savedExpedition = ProgressStore.LoadExpedition(); }
+        catch (InvalidOperationException ex) { MessageBox.Show(this, ex.Message, "SQL Server no disponible", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+        UpdateMenuControls();
     }
 
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
         Graphics g = e.Graphics;
+        if (_menuBackground is null)
+        {
+            using var designerBackground = new SolidBrush(BackColor);
+            g.FillRectangle(designerBackground, ClientRectangle);
+            return;
+        }
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.InterpolationMode = InterpolationMode.HighQualityBilinear;
         float sx = ClientSize.Width / DesignWidth, sy = ClientSize.Height / DesignHeight;
         g.ScaleTransform(sx, sy);
         g.DrawImage(_menuBackground, new RectangleF(0, 0, DesignWidth, DesignHeight));
         DrawHunterIdle(g);
-        DrawHover(g);
         DrawDynamicPanels(g);
     }
 
@@ -239,29 +244,6 @@ internal sealed class MainMenuForm : Form
             float size = 3 + (i % 3) * 1.7f;
             g.FillEllipse(_moteBrushes[i % _moteBrushes.Length], x, y, size, size * 2.1f);
         }
-    }
-
-    private void DrawHover(Graphics g)
-    {
-        if (_hovered.Length == 0 || _hovered == "music") return;
-        RectangleF rect = _hovered switch
-        {
-            "play" => new(50, 296, 356, 54),
-            "dungeon" => new(50, 369, 356, 54),
-            "hunter" => new(50, 439, 356, 53),
-            "settings" => new(50, 509, 356, 53),
-            "controls" => new(50, 579, 356, 53),
-            "difficulty" => new(48, 650, 358, 58),
-            _ => RectangleF.Empty
-        };
-        if (rect.IsEmpty) return;
-        PointF[] corners = [new(rect.Left + 15, rect.Top), new(rect.Right - 15, rect.Top), new(rect.Right, rect.Top + 15), new(rect.Right, rect.Bottom - 15), new(rect.Right - 15, rect.Bottom), new(rect.Left + 15, rect.Bottom), new(rect.Left, rect.Bottom - 15), new(rect.Left, rect.Top + 15)];
-        using var path = new GraphicsPath();
-        path.AddPolygon(corners);
-        using var fill = new SolidBrush(Color.FromArgb(_hovered == "play" ? 50 : 32, _hovered == "play" ? 46 : 159, _hovered == "play" ? 201 : 116, 255));
-        using var edge = new Pen(Color.FromArgb(215, _hovered == "play" ? 91 : 199, _hovered == "play" ? 225 : 255, 255), 2.5f);
-        g.FillPath(fill, path);
-        g.DrawPath(edge, path);
     }
 
     private void DrawDynamicPanels(Graphics g)
@@ -300,27 +282,5 @@ internal sealed class MainMenuForm : Form
         g.FillRectangle(footerBg, 1200, 735, 160, 33);
         g.DrawString(_music.Enabled ? "♫ MÚSICA: SÍ" : "♫ MÚSICA: NO", statsFont, muted, new RectangleF(1208, 741, 148, 20));
 
-        RectangleF difficultyBox = new(42, 650, 370, 58);
-        using var difficultyBack = new SolidBrush(Color.FromArgb(238, 9, 8, 25));
-        using var difficultyEdge = new Pen(_hovered == "difficulty" ? Color.FromArgb(255, 208, 173, 255) : Color.FromArgb(185, 159, 111, 244), _hovered == "difficulty" ? 2.4f : 1.4f);
-        using var difficultyLabel = new Font("Segoe UI", 8, FontStyle.Bold);
-        using var difficultyValue = new Font("Segoe UI", 12, FontStyle.Bold);
-        using var difficultyHint = new Font("Segoe UI", 7, FontStyle.Regular);
-        g.FillRectangle(difficultyBack, difficultyBox);
-        g.DrawRectangle(difficultyEdge, Rectangle.Round(difficultyBox));
-        DifficultyDefinition selected = DifficultyCatalog.All[_selectedDifficulty];
-        Color difficultyColor = _selectedDifficulty switch { 0 => Color.FromArgb(103, 241, 196), 2 => Color.FromArgb(255, 112, 150), _ => Color.FromArgb(152, 199, 255) };
-        using var difficultyBrush = new SolidBrush(difficultyColor);
-        var alignCenter = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-        g.DrawString("DIFICULTAD · V / CLIC PARA CAMBIAR", difficultyLabel, muted, new RectangleF(52, 653, 350, 18), alignCenter);
-        g.DrawString(selected.Name, difficultyValue, difficultyBrush, new RectangleF(52, 672, 350, 25), alignCenter);
-        using var hintBrush = new SolidBrush(Color.FromArgb(190, 196, 192, 219));
-        string difficultyDescription = _selectedDifficulty switch
-        {
-            0 => "5 vidas · enemigos y jefes más accesibles",
-            2 => "2 vidas · enemigos resistentes · jefes feroces",
-            _ => "3 vidas · desafío equilibrado"
-        };
-        g.DrawString(difficultyDescription, difficultyHint, hintBrush, new RectangleF(54, 694, 346, 12), alignCenter);
     }
 }

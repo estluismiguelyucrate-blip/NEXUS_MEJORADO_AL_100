@@ -14,6 +14,12 @@ internal sealed class HunterProgress
     public HunterArchetype Hunter => HunterCatalog.All.FirstOrDefault(x => x.Id == HunterId) ?? HunterCatalog.All[0];
 }
 
+internal sealed record SavedEnemy(float X, float Speed, int Health, int AttackCooldown, bool Alive);
+internal sealed record ExpeditionSave(
+    int DungeonIndex, int DifficultyIndex, float PlayerX, float PlayerY, float VelocityX, float VelocityY,
+    float CheckpointX, int Score, int Lives, int BossHealth, bool BossAwakened, bool BossDefeated,
+    int WorldTicks, bool FacingRight, bool Grounded, int[] CollectedShards, SavedEnemy[] Enemies, int[] TrapPhases);
+
 /// <summary>All player progression is stored in SQL Server. No file-based save is used.</summary>
 internal static class ProgressStore
 {
@@ -100,6 +106,132 @@ internal static class ProgressStore
         }
     }
 
+    public static ExpeditionSave? LoadExpedition()
+    {
+        lock (Gate)
+        {
+            try
+            {
+                using var connection = OpenDatabase();
+                ExpeditionSave? save;
+                using (var command = new SqlCommand("SELECT DungeonIndex, DifficultyIndex, PlayerX, PlayerY, VelocityX, VelocityY, CheckpointX, Score, Lives, BossHealth, BossAwakened, BossDefeated, WorldTicks, FacingRight, Grounded FROM dbo.ExpeditionSave WHERE ProfileId = 1", connection))
+                using (var reader = command.ExecuteReader())
+                {
+                    if (!reader.Read()) { SqlAvailable = true; return null; }
+                    save = new ExpeditionSave(
+                        reader.GetByte(0), reader.GetByte(1), reader.GetFloat(2), reader.GetFloat(3), reader.GetFloat(4), reader.GetFloat(5),
+                        reader.GetFloat(6), reader.GetInt32(7), reader.GetByte(8), reader.GetInt32(9), reader.GetBoolean(10), reader.GetBoolean(11),
+                        reader.GetInt32(12), reader.GetBoolean(13), reader.GetBoolean(14), [], [], []);
+                }
+                var shards = new List<int>();
+                using (var command = new SqlCommand("SELECT ShardIndex FROM dbo.ExpeditionShardSave WHERE ProfileId = 1 AND DungeonIndex = @dungeon ORDER BY ShardIndex", connection))
+                {
+                    command.Parameters.AddWithValue("@dungeon", save.DungeonIndex);
+                    using var reader = command.ExecuteReader(); while (reader.Read()) shards.Add(reader.GetInt32(0));
+                }
+                var enemies = new List<SavedEnemy>();
+                using (var command = new SqlCommand("SELECT X, Speed, Health, AttackCooldown, Alive FROM dbo.ExpeditionEnemySave WHERE ProfileId = 1 AND DungeonIndex = @dungeon ORDER BY EnemyIndex", connection))
+                {
+                    command.Parameters.AddWithValue("@dungeon", save.DungeonIndex);
+                    using var reader = command.ExecuteReader(); while (reader.Read()) enemies.Add(new(reader.GetFloat(0), reader.GetFloat(1), reader.GetInt32(2), reader.GetInt32(3), reader.GetBoolean(4)));
+                }
+                var traps = new List<int>();
+                using (var command = new SqlCommand("SELECT Phase FROM dbo.ExpeditionTrapSave WHERE ProfileId = 1 AND DungeonIndex = @dungeon ORDER BY TrapIndex", connection))
+                {
+                    command.Parameters.AddWithValue("@dungeon", save.DungeonIndex);
+                    using var reader = command.ExecuteReader(); while (reader.Read()) traps.Add(reader.GetInt32(0));
+                }
+                SqlAvailable = true;
+                return save with { CollectedShards = shards.ToArray(), Enemies = enemies.ToArray(), TrapPhases = traps.ToArray() };
+            }
+            catch (Exception ex) when (IsSqlFailure(ex))
+            {
+                SqlAvailable = false;
+                throw CreateConnectionError(ex);
+            }
+        }
+    }
+
+    public static void SaveExpedition(ExpeditionSave save)
+    {
+        lock (Gate)
+        {
+            try
+            {
+                using var connection = OpenDatabase();
+                using var transaction = connection.BeginTransaction();
+                const string upsert = """
+                    UPDATE dbo.ExpeditionSave SET DungeonIndex=@dungeon, DifficultyIndex=@difficulty, PlayerX=@x, PlayerY=@y,
+                        VelocityX=@vx, VelocityY=@vy, CheckpointX=@checkpoint, Score=@score, Lives=@lives, BossHealth=@bossHealth,
+                        BossAwakened=@bossAwakened, BossDefeated=@bossDefeated, WorldTicks=@ticks, FacingRight=@facing, Grounded=@grounded,
+                        SavedAt=SYSUTCDATETIME() WHERE ProfileId=1;
+                    IF @@ROWCOUNT=0 INSERT dbo.ExpeditionSave
+                        (ProfileId,DungeonIndex,DifficultyIndex,PlayerX,PlayerY,VelocityX,VelocityY,CheckpointX,Score,Lives,BossHealth,BossAwakened,BossDefeated,WorldTicks,FacingRight,Grounded)
+                        VALUES (1,@dungeon,@difficulty,@x,@y,@vx,@vy,@checkpoint,@score,@lives,@bossHealth,@bossAwakened,@bossDefeated,@ticks,@facing,@grounded);
+                    DELETE dbo.ExpeditionShardSave WHERE ProfileId=1;
+                    DELETE dbo.ExpeditionEnemySave WHERE ProfileId=1;
+                    DELETE dbo.ExpeditionTrapSave WHERE ProfileId=1;
+                    """;
+                using (var command = new SqlCommand(upsert, connection, transaction))
+                {
+                    command.Parameters.AddWithValue("@dungeon", save.DungeonIndex); command.Parameters.AddWithValue("@difficulty", save.DifficultyIndex);
+                    command.Parameters.AddWithValue("@x", save.PlayerX); command.Parameters.AddWithValue("@y", save.PlayerY);
+                    command.Parameters.AddWithValue("@vx", save.VelocityX); command.Parameters.AddWithValue("@vy", save.VelocityY);
+                    command.Parameters.AddWithValue("@checkpoint", save.CheckpointX); command.Parameters.AddWithValue("@score", save.Score);
+                    command.Parameters.AddWithValue("@lives", save.Lives); command.Parameters.AddWithValue("@bossHealth", save.BossHealth);
+                    command.Parameters.AddWithValue("@bossAwakened", save.BossAwakened); command.Parameters.AddWithValue("@bossDefeated", save.BossDefeated);
+                    command.Parameters.AddWithValue("@ticks", save.WorldTicks); command.Parameters.AddWithValue("@facing", save.FacingRight);
+                    command.Parameters.AddWithValue("@grounded", save.Grounded); command.ExecuteNonQuery();
+                }
+                for (int i = 0; i < save.CollectedShards.Length; i++)
+                {
+                    using var command = new SqlCommand("INSERT dbo.ExpeditionShardSave (ProfileId,DungeonIndex,ShardIndex) VALUES (1,@dungeon,@index)", connection, transaction);
+                    command.Parameters.AddWithValue("@dungeon", save.DungeonIndex); command.Parameters.AddWithValue("@index", save.CollectedShards[i]); command.ExecuteNonQuery();
+                }
+                for (int i = 0; i < save.Enemies.Length; i++)
+                {
+                    SavedEnemy enemy = save.Enemies[i];
+                    using var command = new SqlCommand("INSERT dbo.ExpeditionEnemySave (ProfileId,DungeonIndex,EnemyIndex,X,Speed,Health,AttackCooldown,Alive) VALUES (1,@dungeon,@index,@x,@speed,@health,@cooldown,@alive)", connection, transaction);
+                    command.Parameters.AddWithValue("@dungeon", save.DungeonIndex); command.Parameters.AddWithValue("@index", i);
+                    command.Parameters.AddWithValue("@x", enemy.X); command.Parameters.AddWithValue("@speed", enemy.Speed);
+                    command.Parameters.AddWithValue("@health", enemy.Health); command.Parameters.AddWithValue("@cooldown", enemy.AttackCooldown);
+                    command.Parameters.AddWithValue("@alive", enemy.Alive); command.ExecuteNonQuery();
+                }
+                for (int i = 0; i < save.TrapPhases.Length; i++)
+                {
+                    using var command = new SqlCommand("INSERT dbo.ExpeditionTrapSave (ProfileId,DungeonIndex,TrapIndex,Phase) VALUES (1,@dungeon,@index,@phase)", connection, transaction);
+                    command.Parameters.AddWithValue("@dungeon", save.DungeonIndex); command.Parameters.AddWithValue("@index", i);
+                    command.Parameters.AddWithValue("@phase", save.TrapPhases[i]); command.ExecuteNonQuery();
+                }
+                transaction.Commit();
+                SqlAvailable = true;
+            }
+            catch (Exception ex) when (IsSqlFailure(ex))
+            {
+                SqlAvailable = false;
+                throw CreateConnectionError(ex);
+            }
+        }
+    }
+
+    public static void DeleteExpedition()
+    {
+        lock (Gate)
+        {
+            try
+            {
+                using var connection = OpenDatabase();
+                using var command = new SqlCommand("DELETE dbo.ExpeditionSave WHERE ProfileId=1; DELETE dbo.ExpeditionShardSave WHERE ProfileId=1; DELETE dbo.ExpeditionEnemySave WHERE ProfileId=1; DELETE dbo.ExpeditionTrapSave WHERE ProfileId=1;", connection);
+                command.ExecuteNonQuery(); SqlAvailable = true;
+            }
+            catch (Exception ex) when (IsSqlFailure(ex))
+            {
+                SqlAvailable = false;
+                throw CreateConnectionError(ex);
+            }
+        }
+    }
+
     private static SqlConnection OpenDatabase()
     {
         var target = new SqlConnectionStringBuilder(ConnectionString);
@@ -133,6 +265,23 @@ internal static class ProgressStore
                         CONSTRAINT CK_HunterProgress_ProfileId CHECK (ProfileId = 1)
                     );
                 END;
+                IF OBJECT_ID(N'dbo.ExpeditionSave', N'U') IS NULL
+                    CREATE TABLE dbo.ExpeditionSave
+                    (
+                        ProfileId tinyint NOT NULL CONSTRAINT PK_ExpeditionSave PRIMARY KEY,
+                        DungeonIndex tinyint NOT NULL, DifficultyIndex tinyint NOT NULL,
+                        PlayerX real NOT NULL, PlayerY real NOT NULL, VelocityX real NOT NULL, VelocityY real NOT NULL,
+                        CheckpointX real NOT NULL, Score int NOT NULL, Lives tinyint NOT NULL, BossHealth int NOT NULL,
+                        BossAwakened bit NOT NULL, BossDefeated bit NOT NULL, WorldTicks int NOT NULL,
+                        FacingRight bit NOT NULL, Grounded bit NOT NULL, SavedAt datetime2 NOT NULL DEFAULT (SYSUTCDATETIME()),
+                        CONSTRAINT CK_ExpeditionSave_ProfileId CHECK (ProfileId = 1)
+                    );
+                IF OBJECT_ID(N'dbo.ExpeditionShardSave', N'U') IS NULL
+                    CREATE TABLE dbo.ExpeditionShardSave (ProfileId tinyint NOT NULL, DungeonIndex tinyint NOT NULL, ShardIndex int NOT NULL, CONSTRAINT PK_ExpeditionShardSave PRIMARY KEY (ProfileId,DungeonIndex,ShardIndex));
+                IF OBJECT_ID(N'dbo.ExpeditionEnemySave', N'U') IS NULL
+                    CREATE TABLE dbo.ExpeditionEnemySave (ProfileId tinyint NOT NULL, DungeonIndex tinyint NOT NULL, EnemyIndex int NOT NULL, X real NOT NULL, Speed real NOT NULL, Health int NOT NULL, AttackCooldown int NOT NULL, Alive bit NOT NULL, CONSTRAINT PK_ExpeditionEnemySave PRIMARY KEY (ProfileId,DungeonIndex,EnemyIndex));
+                IF OBJECT_ID(N'dbo.ExpeditionTrapSave', N'U') IS NULL
+                    CREATE TABLE dbo.ExpeditionTrapSave (ProfileId tinyint NOT NULL, DungeonIndex tinyint NOT NULL, TrapIndex int NOT NULL, Phase int NOT NULL, CONSTRAINT PK_ExpeditionTrapSave PRIMARY KEY (ProfileId,DungeonIndex,TrapIndex));
                 """;
             using var schemaCommand = new SqlCommand(schema, schemaConnection);
             schemaCommand.ExecuteNonQuery();

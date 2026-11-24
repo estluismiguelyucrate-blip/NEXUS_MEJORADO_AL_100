@@ -9,6 +9,7 @@ internal sealed class PlatformerForm : Form
     private const float BossCenterX = WorldWidth - 250;
     private readonly Panel _canvas;
     private readonly System.Windows.Forms.Timer _timer;
+    private readonly Button _saveButton;
     private DungeonDefinition _dungeon = null!;
     private readonly DifficultyDefinition _difficulty;
     private int _dungeonIndex;
@@ -42,8 +43,9 @@ internal sealed class PlatformerForm : Form
     private string _notice = "Esquiva centinelas y salta las placas cuando brillen en rojo.";
     private int _noticeTicks = 220;
 
-    public PlatformerForm(int dungeonIndex, int difficultyIndex, HunterProgress profile, OriginalMusic music)
+    public PlatformerForm(int dungeonIndex, int difficultyIndex, HunterProgress profile, OriginalMusic music, ExpeditionSave? savedRun = null)
     {
+        if (savedRun is not null) { dungeonIndex = savedRun.DungeonIndex; difficultyIndex = savedRun.DifficultyIndex; }
         _difficulty = DifficultyCatalog.All[Math.Clamp(difficultyIndex, 0, DifficultyCatalog.All.Length - 1)];
         _profile = profile; _music = music; _lives = _difficulty.Lives;
         _playerSprite = LoadArt(_profile.Hunter.Sprite);
@@ -58,9 +60,26 @@ internal sealed class PlatformerForm : Form
         _canvas.Paint += PaintWorld;
         _canvas.Resize += (_, _) => _canvas.Invalidate();
         Controls.Add(_canvas);
+        _saveButton = new Button
+        {
+            Text = "GUARDAR PARTIDA",
+            Location = new Point(ClientSize.Width - 200, 82),
+            Size = new Size(176, 34),
+            Anchor = AnchorStyles.Top | AnchorStyles.Right,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.FromArgb(39, 27, 71),
+            ForeColor = Color.FromArgb(236, 226, 255),
+            Font = new Font("Bahnschrift", 9, FontStyle.Bold),
+            Cursor = Cursors.Hand
+        };
+        _saveButton.FlatAppearance.BorderColor = Color.FromArgb(157, 118, 247);
+        _saveButton.FlatAppearance.BorderSize = 1;
+        _saveButton.Click += (_, _) => SaveExpeditionToSql(announce: true);
+        Controls.Add(_saveButton);
         KeyDown += OnKeyDown;
         KeyUp += (_, e) => _held.Remove(e.KeyCode);
         Deactivate += (_, _) => _held.Clear();
+        if (savedRun is not null) ApplySavedExpedition(savedRun);
         _timer = new System.Windows.Forms.Timer { Interval = 16 };
         _timer.Tick += (_, _) => { UpdateGame(); _canvas.Invalidate(); };
         _timer.Start();
@@ -108,11 +127,64 @@ internal sealed class PlatformerForm : Form
         for (int i = 0; i < trapPositions.Length; i++) _traps.Add(new SpikeTrap(trapPositions[i], 82, i * 41));
     }
 
+    private void ApplySavedExpedition(ExpeditionSave save)
+    {
+        _x = Math.Clamp(save.PlayerX, 0, WorldWidth - PlayerWidth);
+        _y = Math.Clamp(save.PlayerY, 0, GroundY + 100);
+        _vx = Math.Clamp(save.VelocityX, -8.2f, 8.2f);
+        _vy = Math.Clamp(save.VelocityY, -18, 14);
+        _checkpoint = Math.Clamp(save.CheckpointX, 0, WorldWidth - PlayerWidth);
+        _score = Math.Max(0, save.Score); _lives = Math.Clamp(save.Lives, 1, _difficulty.Lives);
+        _bossHealth = Math.Clamp(save.BossHealth, 0, _bossMaxHealth);
+        _bossAwakened = save.BossAwakened; _bossDefeated = save.BossDefeated || _bossHealth == 0;
+        _bossAwakened |= _bossDefeated;
+        _worldTicks = Math.Max(0, save.WorldTicks); _facingRight = save.FacingRight; _grounded = save.Grounded;
+        foreach (int index in save.CollectedShards)
+            if (index >= 0 && index < _shards.Count) _shards[index].Collected = true;
+        for (int i = 0; i < Math.Min(_enemies.Count, save.Enemies.Length); i++)
+        {
+            SavedEnemy state = save.Enemies[i]; Patroller enemy = _enemies[i];
+            enemy.X = Math.Clamp(state.X, enemy.Min, enemy.Max);
+            if (state.Speed != 0) enemy.Speed = Math.Abs(state.Speed) * MathF.Sign(state.Speed);
+            enemy.Health = Math.Clamp(state.Health, 0, enemy.MaxHealth); enemy.Alive = state.Alive && enemy.Health > 0;
+            enemy.AttackCooldown = Math.Max(0, state.AttackCooldown);
+        }
+        for (int i = 0; i < Math.Min(_traps.Count, save.TrapPhases.Length); i++) _traps[i].SetPhase(save.TrapPhases[i]);
+        _bossAttackCooldown = _bossAwakened ? 80 : 0;
+        _hurtTicks = 75;
+        _camera = Math.Clamp(_x - 330, 0, WorldWidth - 1100);
+        SetNotice($"Partida restaurada desde SQL · {_dungeon.Name} · {_difficulty.Name}");
+    }
+
+    private bool SaveExpeditionToSql(bool announce)
+    {
+        if (_won) return true;
+        try
+        {
+            int difficultyIndex = Array.FindIndex(DifficultyCatalog.All, item => item.Id == _difficulty.Id);
+            var save = new ExpeditionSave(_dungeonIndex, Math.Max(0, difficultyIndex), _x, _y, _vx, _vy, _checkpoint,
+                _score, Math.Max(1, _lives), _bossHealth, _bossAwakened, _bossDefeated, _worldTicks, _facingRight, _grounded,
+                _shards.Select((shard, index) => (shard, index)).Where(item => item.shard.Collected).Select(item => item.index).ToArray(),
+                _enemies.Select(enemy => new SavedEnemy(enemy.X, enemy.Speed, enemy.Health, enemy.AttackCooldown, enemy.Alive)).ToArray(),
+                _traps.Select(trap => trap.Phase).ToArray());
+            ProgressStore.SaveExpedition(save);
+            if (announce) SetNotice("Partida guardada en SQL Server. Puedes continuar desde el menú.");
+            return true;
+        }
+        catch (InvalidOperationException ex)
+        {
+            SetNotice("No se pudo guardar en SQL. Revisa la conexión o pulsa F5 para reintentar.");
+            if (announce) MessageBox.Show(this, ex.Message, "No se pudo guardar la partida", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return false;
+        }
+    }
+
     private void OnKeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.KeyCode == Keys.Escape) { Close(); return; }
+        if (e.KeyCode == Keys.Escape) { if (SaveExpeditionToSql(announce: false)) Close(); e.Handled = true; return; }
         if (e.KeyCode == Keys.M) { _music.Toggle(); return; }
         if (e.KeyCode == Keys.R && (_won || _gameOver)) { ResetGame(); return; }
+        if (e.KeyCode == Keys.F5) { SaveExpeditionToSql(announce: true); e.Handled = true; return; }
         if (e.KeyCode is Keys.J or Keys.X)
         {
             if (!_held.Contains(e.KeyCode)) SwingAxe();
@@ -197,9 +269,9 @@ internal sealed class PlatformerForm : Form
         UpdateHunterProjectiles();
         UpdateProjectiles(_enemyShots, player);
         UpdateProjectiles(_bossShots, player);
-        if (_x > 1280 && _checkpoint < 1300) { _checkpoint = 1320; SetNotice("Punto de control activado."); }
-        if (_x > 2530 && _checkpoint < 2600) { _checkpoint = 2620; SetNotice("Punto de control de la segunda ruta activado."); }
-        if (_x > 3100 && _checkpoint < 3190) { _checkpoint = 3190; SetNotice("Último punto de control activado."); }
+        if (_x > 1280 && _checkpoint < 1300) { _checkpoint = 1320; SetNotice("Punto de control SQL activado."); SaveExpeditionToSql(announce: false); }
+        if (_x > 2530 && _checkpoint < 2600) { _checkpoint = 2620; SetNotice("Segundo checkpoint guardado en SQL."); SaveExpeditionToSql(announce: false); }
+        if (_x > 3100 && _checkpoint < 3190) { _checkpoint = 3190; SetNotice("Último checkpoint guardado en SQL."); SaveExpeditionToSql(announce: false); }
         if (_y > 720) HitPlayer();
         if (_x > WorldWidth - 110 && _bossDefeated) AdvanceExpedition();
         _camera = Math.Clamp(_x - 330, 0, WorldWidth - 1100);
@@ -287,6 +359,7 @@ internal sealed class PlatformerForm : Form
             _rewardText = $"+{reward.Experience} XP · +{reward.Credits} créditos · Rango {reward.RankAfter}" + (reward.RankAfter != reward.RankBefore ? " · ¡ASCENSO!" : "");
         }
         _bossShots.Clear(); _bossWarningX.Clear(); _bossWindup = 0;
+        SaveExpeditionToSql(announce: false);
         SetNotice($"¡{_dungeon.BossName} derrotado! Sigue la luz del portal para continuar.");
     }
 
@@ -295,7 +368,12 @@ internal sealed class PlatformerForm : Form
         if (_dungeonIndex + 1 >= DungeonCatalog.All.Length)
         {
             _won = true;
-            SetNotice("¡Expedición completada! Derrotaste a todos los guardianes.");
+            bool cleared = true;
+            try { ProgressStore.DeleteExpedition(); }
+            catch (InvalidOperationException) { cleared = false; }
+            SetNotice(cleared
+                ? "¡Expedición completada! Derrotaste a todos los guardianes."
+                : "¡Expedición completada! SQL no pudo borrar el guardado anterior.");
             return;
         }
         LoadDungeon(_dungeonIndex + 1);
@@ -304,6 +382,7 @@ internal sealed class PlatformerForm : Form
         _bossAwakened = _bossDefeated = _rewardClaimed = false; _rewardText = "";
         _hurtTicks = 75;
         Text = $"NEXUS | {_dungeon.Name} · Expedición {_dungeonIndex + 1}/{DungeonCatalog.All.Length}";
+        SaveExpeditionToSql(announce: false);
         SetNotice($"Portal abierto: llegaste a {_dungeon.Name}. ¡Mantén tu avance!");
     }
 
@@ -782,7 +861,11 @@ internal sealed class PlatformerForm : Form
         using var title = new Font("Bahnschrift", 15, FontStyle.Bold); using var small = new Font("Bahnschrift", 9, FontStyle.Bold); using var brush = new SolidBrush(Color.White); using var muted = new SolidBrush(Color.FromArgb(197, 188, 224));
         using var hunterBrush = new SolidBrush(_profile.Hunter.Aura);
         g.DrawString(_dungeon.Name.ToUpperInvariant(), title, brush, 39, 29); g.DrawString($"RANGO {_profile.Rank} · {_difficulty.Name} · {_profile.Hunter.AbilityName} · {_score:0000} · {new string('♥', _lives)}", small, hunterBrush, 40, 62);
-        using var help = new SolidBrush(Color.FromArgb(205, 10, 9, 30)); FillRoundRect(g, help, 770, 20, 308, 54, 12); using var helpFont = new Font("Bahnschrift", 8.5f, FontStyle.Bold); g.DrawString("A / D MOVER · ESPACIO SALTAR · J / X HABILIDAD · M MÚSICA", helpFont, muted, 785, 38);
+        using var help = new SolidBrush(Color.FromArgb(205, 10, 9, 30)); FillRoundRect(g, help, 770, 20, 308, 54, 12);
+        using var helpFont = new Font("Bahnschrift", 7.8f, FontStyle.Bold);
+        g.DrawString("A / D MOVER · ESPACIO SALTAR", helpFont, muted, 784, 26);
+        g.DrawString("J / X HABILIDAD · F5 GUARDAR SQL", helpFont, muted, 784, 42);
+        g.DrawString("M MÚSICA · ESC GUARDA Y SALE", helpFont, muted, 784, 58);
         using var saveFont = new Font("Bahnschrift", 8, FontStyle.Bold);
         g.DrawString("PROGRESO: GUARDADO AUTOMÁTICO EN SQL SERVER AL VENCER CADA JEFE", saveFont, muted, new RectangleF(28, 600, 610, 18));
         if (_noticeTicks > 0 || _won || _gameOver)
@@ -830,6 +913,7 @@ internal sealed class PlatformerForm : Form
         public bool IsActive => Phase >= 176;
         public RectangleF Hitbox => new(X + 4, GroundY - 39, Width - 8, 39);
         public void Update(int tick) => Phase = (tick + phaseOffset) % 220;
+        public void SetPhase(int phase) => Phase = Math.Clamp(phase, 0, 219);
     }
     private sealed class CombatProjectile(float x, float y, float vx, float vy, Color color, float width, float height, string name, int life = 240, int damage = 0)
     {

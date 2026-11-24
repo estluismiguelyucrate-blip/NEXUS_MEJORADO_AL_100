@@ -32,7 +32,7 @@ dotnet publish .\NexusCopia.csproj --configuration Release --output .\artifacts\
 Después inicia `artifacts\NexusCopy\NexusCopia.exe`.
 
 
-Controles: `A/D` o flechas para moverse, `Espacio/W` para saltar y `J/X` para activar la habilidad. En el menú usa `V` o haz clic en el selector para alternar Recluta, Cazador y Monarca.
+Controles: `A/D` o flechas para moverse, `Espacio/W` para saltar, `J/X` para la habilidad y `F5` para guardar la partida en SQL. `Esc` guarda y vuelve al menú. En el menú, `V` cambia Recluta, Cazador y Monarca; el botón **Continuar partida · SQL** reanuda la última expedición guardada.
 
 ## Sistemas jugables
 
@@ -42,6 +42,8 @@ Controles: `A/D` o flechas para moverse, `Espacio/W` para saltar y `J/X` para ac
 - Un jefe ilustrado y dos ataques telegráficos propios por mazmorra; los centinelas patrullan, disparan, resisten varios golpes y se pueden esquivar.
 - Trampas de púas con aviso visual, ciclo de activación, variaciones de dificultad y paso directo a la siguiente mazmorra después de cada jefe.
 - Dificultades con vidas y resistencia/ritmo de ataque diferentes. La expedición mantiene las vidas y el puntaje entre mundos.
+- Menú inicial construido con controles nativos editables en Windows Forms Designer (`MainMenuForm.Designer.cs`), además del fondo artístico y los paneles dinámicos.
+- Guardado y reanudación de la partida desde SQL Server: posición, checkpoint, puntaje, vidas, dificultad, jefe, fragmentos, centinelas y ciclo de trampas. Los checkpoints y las victorias también activan el guardado automático.
 - Habilidades con proyectiles reales: la Lanza Solar de Ariadna, la Ráfaga Esmeralda triple de Kael y el combo cuerpo a cuerpo Eclipse Gemelo de Soren.
 - Combate, fragmentos coleccionables, puntos de control, vidas, barra de jefe y extracción tras derrotarlo.
 - Progresión persistente de rango E a S, experiencia, créditos, récord y mazmorras completadas.
@@ -57,7 +59,7 @@ El juego sintetiza una banda sonora original de fantasía con energía de anime:
 
 ## Base de datos SQL Server
 
-El progreso se guarda **exclusivamente en SQL Server**, en la base `NexusCopyDb` y tabla `dbo.HunterProgress`. SQL Server LocalDB es la conexión predeterminada. Al iniciar, el juego crea la base, la tabla y el perfil si aún no existen. No usa archivos JSON ni otro almacenamiento para el progreso. Si SQL Server no está instalado, iniciado o accesible, el juego muestra un error y no inicia una partida que no pueda guardar.
+El progreso y las partidas se guardan **exclusivamente en SQL Server**, en la base `NexusCopyDb`. El perfil usa `dbo.HunterProgress`; las partidas usan `dbo.ExpeditionSave` y sus tablas relacionadas para fragmentos, centinelas y trampas. SQL Server LocalDB es la conexión predeterminada. Al iniciar, el juego crea las tablas necesarias si aún no existen. No usa archivos JSON ni otro almacenamiento para el progreso o las partidas. Si SQL Server no está instalado, iniciado o accesible, el juego muestra un error y no inicia una partida que no pueda guardar.
 
 La aplicación ya fue abierta correctamente contra SQL Server LocalDB después de corregir la consulta de creación de base. Si vas a compilar desde Visual Studio, asegúrate de restaurar los paquetes NuGet y de tener iniciada la instancia `MSSQLLocalDB`.
 

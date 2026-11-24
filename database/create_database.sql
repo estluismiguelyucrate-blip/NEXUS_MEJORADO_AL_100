@@ -29,3 +29,30 @@ GO
 IF NOT EXISTS (SELECT 1 FROM dbo.HunterProgress WHERE ProfileId = 1)
     INSERT dbo.HunterProgress (ProfileId, HunterId) VALUES (1, N'soren');
 GO
+
+IF OBJECT_ID(N'dbo.ExpeditionSave', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.ExpeditionSave
+    (
+        ProfileId tinyint NOT NULL CONSTRAINT PK_ExpeditionSave PRIMARY KEY,
+        DungeonIndex tinyint NOT NULL, DifficultyIndex tinyint NOT NULL,
+        PlayerX real NOT NULL, PlayerY real NOT NULL, VelocityX real NOT NULL, VelocityY real NOT NULL,
+        CheckpointX real NOT NULL, Score int NOT NULL, Lives tinyint NOT NULL, BossHealth int NOT NULL,
+        BossAwakened bit NOT NULL, BossDefeated bit NOT NULL, WorldTicks int NOT NULL,
+        FacingRight bit NOT NULL, Grounded bit NOT NULL, SavedAt datetime2 NOT NULL DEFAULT (SYSUTCDATETIME()),
+        CONSTRAINT CK_ExpeditionSave_ProfileId CHECK (ProfileId = 1)
+    );
+END;
+GO
+
+IF OBJECT_ID(N'dbo.ExpeditionShardSave', N'U') IS NULL
+    CREATE TABLE dbo.ExpeditionShardSave (ProfileId tinyint NOT NULL, DungeonIndex tinyint NOT NULL, ShardIndex int NOT NULL, CONSTRAINT PK_ExpeditionShardSave PRIMARY KEY (ProfileId,DungeonIndex,ShardIndex));
+GO
+
+IF OBJECT_ID(N'dbo.ExpeditionEnemySave', N'U') IS NULL
+    CREATE TABLE dbo.ExpeditionEnemySave (ProfileId tinyint NOT NULL, DungeonIndex tinyint NOT NULL, EnemyIndex int NOT NULL, X real NOT NULL, Speed real NOT NULL, Health int NOT NULL, AttackCooldown int NOT NULL, Alive bit NOT NULL, CONSTRAINT PK_ExpeditionEnemySave PRIMARY KEY (ProfileId,DungeonIndex,EnemyIndex));
+GO
+
+IF OBJECT_ID(N'dbo.ExpeditionTrapSave', N'U') IS NULL
+    CREATE TABLE dbo.ExpeditionTrapSave (ProfileId tinyint NOT NULL, DungeonIndex tinyint NOT NULL, TrapIndex int NOT NULL, Phase int NOT NULL, CONSTRAINT PK_ExpeditionTrapSave PRIMARY KEY (ProfileId,DungeonIndex,TrapIndex));
+GO
