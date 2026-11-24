@@ -4,9 +4,11 @@ Proyecto independiente de **NEXUS**, concebido como una aventura 2D de cazadores
 
 ## Ejecutar
 
-Requiere Windows y el SDK de .NET 10 con Windows Forms. Al clonar, abre la solución del repositorio y restaura los recursos de compilación, porque `obj/` no se guarda en Git:
+Requiere Windows y el SDK de .NET 10 con Windows Forms. Clona el repositorio y ejecuta la restauración desde la carpeta recién creada (la misma que contiene `NexusCopy.sln`):
 
 ```powershell
+git clone https://github.com/estluismiguelyucrate-blip/repooooo.git
+cd repooooo
 dotnet restore .\NexusCopy.sln
 dotnet run --project .\NexusCopia.csproj
 ```
