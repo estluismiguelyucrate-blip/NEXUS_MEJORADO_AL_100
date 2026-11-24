@@ -8,14 +8,12 @@ internal sealed class PlatformerForm : Form
     private const float WorldWidth = 2600, GroundY = 535, PlayerWidth = 46, PlayerHeight = 62;
     private readonly Panel _canvas;
     private readonly System.Windows.Forms.Timer _timer;
+    private readonly DungeonDefinition _dungeon;
+    private readonly HunterProgress _profile;
+    private readonly OriginalMusic _music;
     private readonly Image? _knightSprite;
     private readonly HashSet<Keys> _held = new();
-    private readonly List<RectangleF> _platforms = new()
-    {
-        new(0, GroundY, WorldWidth, 180), new(250,440,150,20), new(500,365,150,20),
-        new(770,430,180,20), new(1050,350,160,20), new(1350,420,180,20),
-        new(1635,340,170,20), new(1930,415,180,20), new(2210,345,160,20)
-    };
+    private readonly List<RectangleF> _platforms = new();
     private readonly List<Shard> _shards = new();
     private readonly List<Patroller> _enemies = new();
     private float _x = 65, _y = GroundY - PlayerHeight, _vx, _vy, _camera;
@@ -25,12 +23,17 @@ internal sealed class PlatformerForm : Form
     private int _lives = 3, _score;
     private int _bossHealth = 6, _bossAttackCooldown;
     private bool _bossAwakened, _bossDefeated;
+    private bool _rewardClaimed;
+    private string _rewardText = "";
     private string _notice = "Corre, salta y recoge los fragmentos de energía.";
     private int _noticeTicks = 220;
 
-    public PlatformerForm()
+    public PlatformerForm(int dungeonIndex, HunterProgress profile, OriginalMusic music)
     {
-        Text = "NEXUS | Salto al Umbral";
+        _dungeon = DungeonCatalog.All[Math.Clamp(dungeonIndex, 0, DungeonCatalog.All.Length - 1)];
+        _profile = profile; _music = music; _bossHealth = _dungeon.BossHealth;
+        _platforms.AddRange(_dungeon.Platforms);
+        Text = $"NEXUS | {_dungeon.Name}";
         ClientSize = new Size(1100, 680);
         MinimumSize = new Size(850, 570);
         StartPosition = FormStartPosition.CenterParent;
@@ -49,7 +52,8 @@ internal sealed class PlatformerForm : Form
         _timer = new System.Windows.Forms.Timer { Interval = 16 };
         _timer.Tick += (_, _) => { UpdateGame(); _canvas.Invalidate(); };
         _timer.Start();
-        FormClosed += (_, _) => { _timer.Dispose(); _knightSprite?.Dispose(); };
+        _music.PlayBattle();
+        FormClosed += (_, _) => { _timer.Dispose(); _knightSprite?.Dispose(); _music.PlayMenu(); };
     }
 
     private void SeedLevel()
@@ -59,16 +63,14 @@ internal sealed class PlatformerForm : Form
             float y = _platforms.Where(p => x >= p.Left - 25 && x <= p.Right + 25).Select(p => p.Top - 24).DefaultIfEmpty(GroundY - 24).Min();
             _shards.Add(new Shard(x, y));
         }
-        _enemies.Add(new Patroller(430, GroundY - 30, 405, 490));
-        _enemies.Add(new Patroller(900, GroundY - 30, 850, 1010));
-        _enemies.Add(new Patroller(1240, GroundY - 30, 1220, 1320));
-        _enemies.Add(new Patroller(1800, GroundY - 30, 1830, 1900));
-        _enemies.Add(new Patroller(2130, GroundY - 30, 2110, 2180));
+        foreach (float[] patrol in _dungeon.Patrols)
+            _enemies.Add(new Patroller(patrol[0], patrol[1], patrol[2], patrol[3]));
     }
 
     private void OnKeyDown(object? sender, KeyEventArgs e)
     {
         if (e.KeyCode == Keys.Escape) { Close(); return; }
+        if (e.KeyCode == Keys.M) { _music.Toggle(); return; }
         if (e.KeyCode == Keys.R && (_won || _gameOver)) { ResetGame(); return; }
         if (e.KeyCode is Keys.J or Keys.X)
         {
@@ -109,7 +111,7 @@ internal sealed class PlatformerForm : Form
             }
         }
         player = new RectangleF(_x, _y, PlayerWidth, PlayerHeight);
-        if (_x > 2240 && !_bossAwakened) { _bossAwakened = true; SetNotice("¡El Guardián del Umbral despierta! Ataca cuando se acerque."); }
+        if (_x > 2240 && !_bossAwakened) { _bossAwakened = true; SetNotice($"¡{_dungeon.BossName} despierta! Acércate y usa tu habilidad."); }
         if (_bossAwakened && !_bossDefeated)
         {
             var boss = new RectangleF(2460, GroundY - 118, 104, 118);
@@ -146,7 +148,7 @@ internal sealed class PlatformerForm : Form
         {
             float enemyCenter = enemy.X + 17;
             float forwardDistance = (_facingRight ? enemyCenter - playerCenter : playerCenter - enemyCenter);
-            if (forwardDistance is > 0 and < 88 && Math.Abs((enemy.Y + 15) - (_y + PlayerHeight / 2)) < 52)
+            if (forwardDistance is > 0 and < 105 && Math.Abs((enemy.Y + 15) - (_y + PlayerHeight / 2)) < 52)
             {
                 enemy.Alive = false; _score += 35; SetNotice("¡Hachazo certero! Centinela derrotado. +35"); return;
             }
@@ -155,11 +157,22 @@ internal sealed class PlatformerForm : Form
         {
             float bossCenter = 2512, playerCenterX = _x + PlayerWidth / 2;
             float forward = _facingRight ? bossCenter - playerCenterX : playerCenterX - bossCenter;
-            if (forward is > 0 and < 112 && Math.Abs((GroundY - 59) - (_y + PlayerHeight / 2)) < 86)
+            if (forward is > 0 && forward < _profile.Hunter.AttackRange && Math.Abs((GroundY - 59) - (_y + PlayerHeight / 2)) < 105)
             {
-                _bossHealth--; _score += 50;
-                if (_bossHealth <= 0) { _bossDefeated = true; _score += 250; SetNotice("¡Guardián derrotado! La salida de la mazmorra está abierta."); }
-                else SetNotice($"¡Impacto al Guardián! Integridad: {_bossHealth}/6");
+                _bossHealth -= _profile.Hunter.Damage; _score += 50;
+                if (_bossHealth <= 0)
+                {
+                    _bossHealth = 0; _bossDefeated = true; _score += 250;
+                    if (!_rewardClaimed)
+                    {
+                        int shards = _shards.Count(s => s.Collected);
+                        var reward = ProgressStore.Complete(_profile, _score, shards);
+                        _rewardClaimed = true;
+                        _rewardText = $"+{reward.Experience} XP · +{reward.Credits} créditos · Rango {reward.RankAfter}" + (reward.RankAfter != reward.RankBefore ? " · ¡ASCENSO!" : "");
+                    }
+                    SetNotice($"¡{_dungeon.BossName} derrotado! La extracción está abierta.");
+                }
+                else SetNotice($"¡Habilidad certera! Integridad del jefe: {_bossHealth}/{_dungeon.BossHealth}");
                 return;
             }
         }
@@ -178,7 +191,7 @@ internal sealed class PlatformerForm : Form
     {
         _x = 65; _y = GroundY - PlayerHeight; _vx = _vy = _camera = 0; _checkpoint = 65; _attackTicks = _attackCooldown = 0;
         _lives = 3; _score = 0; _won = _gameOver = false; _held.Clear();
-        _bossHealth = 6; _bossAttackCooldown = 0; _bossAwakened = _bossDefeated = false;
+        _bossHealth = _dungeon.BossHealth; _bossAttackCooldown = 0; _bossAwakened = _bossDefeated = _rewardClaimed = false; _rewardText = "";
         foreach (var shard in _shards) shard.Collected = false;
         foreach (var enemy in _enemies) enemy.Alive = true;
         SetNotice("Corre, salta y recoge los fragmentos de energía.");
@@ -194,7 +207,7 @@ internal sealed class PlatformerForm : Form
         float sx = _canvas.ClientSize.Width / 1100f, sy = _canvas.ClientSize.Height / 620f;
         g.ScaleTransform(sx, sy);
         var viewport = new Rectangle(0, 0, 1100, 620);
-        using (var sky = new LinearGradientBrush(viewport, Color.FromArgb(58, 46, 122), Color.FromArgb(9, 10, 30), LinearGradientMode.Vertical)) g.FillRectangle(sky, viewport);
+        using (var sky = new LinearGradientBrush(viewport, _dungeon.SkyTop, _dungeon.SkyBottom, LinearGradientMode.Vertical)) g.FillRectangle(sky, viewport);
         DrawBackdrop(g);
         g.TranslateTransform(-_camera, 0);
         DrawLevel(g);
@@ -218,14 +231,14 @@ internal sealed class PlatformerForm : Form
         foreach (var p in _platforms)
         {
             if (p.Right < _camera - 30 || p.Left > _camera + 1140) continue;
-            using var ground = new LinearGradientBrush(p, Color.FromArgb(55, 47, 105), Color.FromArgb(20, 18, 47), LinearGradientMode.Vertical); g.FillRectangle(ground, p);
-            using var edge = new Pen(Color.FromArgb(105, 95, 235), 3); g.DrawLine(edge, p.Left, p.Top, p.Right, p.Top);
-            using var seam = new Pen(Color.FromArgb(55, 186, 125, 255), 1); for (float x = p.Left + 25; x < p.Right; x += 56) g.DrawLine(seam, x, p.Top + 8, x, Math.Min(p.Bottom, p.Top + 24));
+            using var ground = new LinearGradientBrush(p, _dungeon.GroundTop, _dungeon.GroundBottom, LinearGradientMode.Vertical); g.FillRectangle(ground, p);
+            using var edge = new Pen(Color.FromArgb(190, _dungeon.Accent), 3); g.DrawLine(edge, p.Left, p.Top, p.Right, p.Top);
+            using var seam = new Pen(Color.FromArgb(55, _dungeon.Accent), 1); for (float x = p.Left + 25; x < p.Right; x += 56) g.DrawLine(seam, x, p.Top + 8, x, Math.Min(p.Bottom, p.Top + 24));
         }
         foreach (var shard in _shards.Where(s => !s.Collected))
         {
-            using var glow = new SolidBrush(Color.FromArgb(45, 76, 237, 255)); g.FillEllipse(glow, shard.X - 13, shard.Y - 13, 26, 26);
-            using var crystal = new SolidBrush(Color.FromArgb(80, 231, 255)); g.FillPolygon(crystal, new[] { new PointF(shard.X, shard.Y - 9), new PointF(shard.X + 7, shard.Y), new PointF(shard.X, shard.Y + 9), new PointF(shard.X - 7, shard.Y) });
+            using var glow = new SolidBrush(Color.FromArgb(48, _dungeon.Accent)); g.FillEllipse(glow, shard.X - 13, shard.Y - 13, 26, 26);
+            using var crystal = new SolidBrush(Color.FromArgb(240, _dungeon.Accent)); g.FillPolygon(crystal, new[] { new PointF(shard.X, shard.Y - 9), new PointF(shard.X + 7, shard.Y), new PointF(shard.X, shard.Y + 9), new PointF(shard.X - 7, shard.Y) });
         }
         foreach (var enemy in _enemies.Where(en => en.Alive)) DrawEnemy(g, enemy);
         if (_bossAwakened && !_bossDefeated) DrawBoss(g);
@@ -251,17 +264,17 @@ internal sealed class PlatformerForm : Form
     private void DrawBoss(Graphics g)
     {
         var body = new RectangleF(2460, GroundY - 118, 104, 118);
-        using var aura = new SolidBrush(Color.FromArgb(46, 255, 38, 123)); g.FillEllipse(aura, body.X - 30, body.Y - 20, body.Width + 60, body.Height + 35);
-        using var armor = new LinearGradientBrush(body, Color.FromArgb(105, 26, 71), Color.FromArgb(20, 8, 35), LinearGradientMode.Vertical); g.FillEllipse(armor, body);
-        using var edge = new Pen(Color.FromArgb(255, 247, 86, 171), 3); g.DrawEllipse(edge, body);
+        using var aura = new SolidBrush(Color.FromArgb(46, _dungeon.Accent)); g.FillEllipse(aura, body.X - 30, body.Y - 20, body.Width + 60, body.Height + 35);
+        using var armor = new LinearGradientBrush(body, Color.FromArgb(105, _dungeon.Accent), Color.FromArgb(20, 8, 35), LinearGradientMode.Vertical); g.FillEllipse(armor, body);
+        using var edge = new Pen(Color.FromArgb(255, _dungeon.Accent), 3); g.DrawEllipse(edge, body);
         using var horn = new SolidBrush(Color.FromArgb(32, 9, 36));
         g.FillPolygon(horn, new[] { new PointF(2477, 452), new PointF(2454, 389), new PointF(2500, 429) });
         g.FillPolygon(horn, new[] { new PointF(2545, 429), new PointF(2585, 386), new PointF(2562, 455) });
         using var eye = new SolidBrush(Color.FromArgb(255, 255, 202, 86)); g.FillEllipse(eye, 2481, 444, 15, 9); g.FillEllipse(eye, 2527, 444, 15, 9);
         using var font = new Font("Bahnschrift", 9, FontStyle.Bold); using var text = new SolidBrush(Color.White);
         using var barBg = new SolidBrush(Color.FromArgb(220, 14, 8, 26)); g.FillRectangle(barBg, 2438, 389, 150, 21);
-        using var bar = new SolidBrush(Color.FromArgb(239, 58, 137)); g.FillRectangle(bar, 2442, 393, 142 * _bossHealth / 6f, 13);
-        g.DrawString($"GUARDIÁN  {_bossHealth}/6", font, text, 2466, 365);
+        using var bar = new SolidBrush(_dungeon.Accent); g.FillRectangle(bar, 2442, 393, 142 * _bossHealth / (float)_dungeon.BossHealth, 13);
+        g.DrawString($"{_dungeon.BossName.ToUpperInvariant()}  {_bossHealth}/{_dungeon.BossHealth}", font, text, 2438, 365);
     }
 
     private void DrawPlayer(Graphics g)
@@ -270,10 +283,10 @@ internal sealed class PlatformerForm : Form
         if (_knightSprite is not null)
         {
             g.DrawImage(_knightSprite, x - 17, y - 41, 82, 104);
-            if (_attackTicks > 0) DrawAxe(g, x, y);
+            if (_attackTicks > 0) DrawHunterSkill(g, x, y);
             return;
         }
-        using var aura = new SolidBrush(Color.FromArgb(52, 29, 148, 255)); g.FillEllipse(aura, x - 12, y + 13, 70, 62);
+        using var aura = new SolidBrush(Color.FromArgb(60, _profile.Hunter.Aura)); g.FillEllipse(aura, x - 12, y + 13, 70, 62);
         using var armor = new SolidBrush(Color.FromArgb(12, 15, 28));
         using var armorEdge = new Pen(Color.FromArgb(255, 42, 185, 255), 2.2f);
         using var trim = new Pen(Color.FromArgb(190, 40, 157, 255), 1.5f);
@@ -304,7 +317,31 @@ internal sealed class PlatformerForm : Form
         g.FillPolygon(armor, new[] { new PointF(shieldX + 1, y + 32), new PointF(shieldX + 16, y + 29), new PointF(shieldX + 19, y + 47), new PointF(shieldX + 10, y + 57), new PointF(shieldX + 2, y + 48) });
         g.FillPolygon(blue, new[] { new PointF(shieldX + 5, y + 35), new PointF(shieldX + 13, y + 34), new PointF(shieldX + 14, y + 46), new PointF(shieldX + 10, y + 51), new PointF(shieldX + 6, y + 46) });
         using var shieldEdge = new Pen(Color.FromArgb(255, 63, 195, 255), 2); g.DrawPolygon(shieldEdge, new[] { new PointF(shieldX + 1, y + 32), new PointF(shieldX + 16, y + 29), new PointF(shieldX + 19, y + 47), new PointF(shieldX + 10, y + 57), new PointF(shieldX + 2, y + 48) });
-        DrawAxe(g, x, y);
+        if (_profile.Hunter.Id == "soren") DrawAxe(g, x, y);
+        else if (_attackTicks > 0) DrawHunterSkill(g, x, y);
+    }
+
+    private void DrawHunterSkill(Graphics g, float x, float y)
+    {
+        if (_profile.Hunter.Id == "soren") { DrawAxe(g, x, y); return; }
+        if (_profile.Hunter.Id == "ariadna")
+        {
+            using var glow = new SolidBrush(Color.FromArgb(85, _profile.Hunter.Aura));
+            using var core = new SolidBrush(Color.FromArgb(235, _profile.Hunter.Aura));
+            float pulse = 15 + (_attackTicks % 4) * 2;
+            g.FillEllipse(glow, x + 23, y + 17, pulse * 2, pulse * 2);
+            g.FillEllipse(core, x + 31, y + 25, pulse, pulse);
+            using var arc = new Pen(Color.FromArgb(210, _profile.Hunter.Aura), 3);
+            g.DrawArc(arc, x + 14, y + 8, 48, 48, -30, 210);
+            return;
+        }
+        using (var blade = new Pen(Color.FromArgb(240, _profile.Hunter.Aura), 4))
+        {
+            g.DrawLine(blade, x + 27, y + 32, x + 67, y + 4);
+            g.DrawLine(blade, x + 38, y + 41, x + 72, y + 19);
+        }
+        using var sparks = new SolidBrush(Color.White);
+        g.FillEllipse(sparks, x + 59, y + 3, 5, 5); g.FillEllipse(sparks, x + 68, y + 18, 4, 4);
     }
 
     private void DrawAxe(Graphics g, float x, float y)
@@ -330,14 +367,21 @@ internal sealed class PlatformerForm : Form
         using var plate = new SolidBrush(Color.FromArgb(220, 10, 9, 30)); FillRoundRect(g, plate, 22, 20, 390, 72, 14);
         using var border = new Pen(Color.FromArgb(130, 153, 118, 255), 1); DrawRoundRect(g, border, 22, 20, 390, 72, 14);
         using var title = new Font("Bahnschrift", 15, FontStyle.Bold); using var small = new Font("Bahnschrift", 9, FontStyle.Bold); using var brush = new SolidBrush(Color.White); using var muted = new SolidBrush(Color.FromArgb(197, 188, 224));
-        g.DrawString("SALTO AL UMBRAL", title, brush, 39, 29); g.DrawString($"PUNTOS  {_score:0000}     VIDAS  {new string('♥', _lives)}", small, new SolidBrush(Color.FromArgb(124, 229, 255)), 40, 62);
-        using var help = new SolidBrush(Color.FromArgb(205, 10, 9, 30)); FillRoundRect(g, help, 770, 20, 308, 54, 12); using var helpFont = new Font("Bahnschrift", 8.5f, FontStyle.Bold); g.DrawString("A / D MOVER · ESPACIO SALTAR · J / X HACHA", helpFont, muted, 785, 38);
+        g.DrawString(_dungeon.Name.ToUpperInvariant(), title, brush, 39, 29); g.DrawString($"RANGO {_profile.Rank} · {_profile.Hunter.ClassName} · PUNTOS {_score:0000} · VIDAS {new string('♥', _lives)}", small, new SolidBrush(_profile.Hunter.Aura), 40, 62);
+        using var help = new SolidBrush(Color.FromArgb(205, 10, 9, 30)); FillRoundRect(g, help, 770, 20, 308, 54, 12); using var helpFont = new Font("Bahnschrift", 8.5f, FontStyle.Bold); g.DrawString("A / D MOVER · ESPACIO SALTAR · J / X HABILIDAD · M MÚSICA", helpFont, muted, 785, 38);
         if (_noticeTicks > 0 || _won || _gameOver)
         {
             using var noticeBg = new SolidBrush(Color.FromArgb(214, 10, 9, 30)); FillRoundRect(g, noticeBg, 285, 552, 530, 42, 12);
             using var noticePen = new Pen(Color.FromArgb(100, 153, 118, 255)); DrawRoundRect(g, noticePen, 285, 552, 530, 42, 12);
             using var noticeText = new Font("Bahnschrift", 10, FontStyle.Bold); using var noticeBrush = new SolidBrush(Color.White); var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
             g.DrawString(_notice, noticeText, noticeBrush, new RectangleF(296, 557, 508, 32), sf);
+        }
+        if (_bossDefeated)
+        {
+            using var rewardBg = new SolidBrush(Color.FromArgb(226, 10, 9, 30)); FillRoundRect(g, rewardBg, 365, 492, 370, 42, 12);
+            using var rewardFont = new Font("Bahnschrift", 9.5f, FontStyle.Bold); using var rewardBrush = new SolidBrush(Color.FromArgb(255, 226, 157));
+            var center = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+            g.DrawString(_rewardText, rewardFont, rewardBrush, new RectangleF(377, 497, 346, 32), center);
         }
     }
 
