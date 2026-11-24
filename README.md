@@ -42,7 +42,6 @@ Controles: `A/D` o flechas para moverse, `Espacio/W` para saltar, `J/X` para la 
 - Un jefe ilustrado y dos ataques telegráficos propios por mazmorra; los centinelas patrullan, disparan, resisten varios golpes y se pueden esquivar.
 - Trampas de púas con aviso visual, ciclo de activación, variaciones de dificultad y paso directo a la siguiente mazmorra después de cada jefe.
 - Dificultades con vidas y resistencia/ritmo de ataque diferentes. La expedición mantiene las vidas y el puntaje entre mundos.
-- Menú inicial conservando el fondo artístico original, con botones nativos de Windows Forms ubicados sobre los controles del diseño y editables en el Designer (`MainMenuForm.Designer.cs`).
 - Guardado y reanudación de la partida desde SQL Server: posición, checkpoint, puntaje, vidas, dificultad, jefe, fragmentos, centinelas y ciclo de trampas. Los checkpoints y las victorias también activan el guardado automático.
 - Habilidades con proyectiles reales: la Lanza Solar de Ariadna, la Ráfaga Esmeralda triple de Kael y el combo cuerpo a cuerpo Eclipse Gemelo de Soren.
 - Combate, fragmentos coleccionables, puntos de control, vidas, barra de jefe y extracción tras derrotarlo.
@@ -50,6 +49,24 @@ Controles: `A/D` o flechas para moverse, `Espacio/W` para saltar, `J/X` para la 
 - Música original sintetizada en ejecución para menú y combate; tecla `M` para activarla o silenciarla.
 - El menú mantiene el arte de fondo original; los botones de juego, selección, configuración y controles son controles reales de Windows Forms editables en el diseñador.
 - Recursos de arte organizados por personaje, fondo, tileset, jefe, interfaz y audio.
+
+## Estructura del proyecto
+
+- `src/UI/`: menú Windows Forms y su archivo Designer.
+- `src/Game/`: simulación, combate y catálogos de mazmorra y cazador.
+- `src/Models/`: perfil y estado guardable de la expedición.
+- `src/Data/`: carga y guardado del progreso SQL.
+- `src/Database/`: creación de base y tablas SQL Server desde C#.
+- `src/Audio/`: música sintetizada en C#.
+- `assets/`: identidad visual y recursos propios de Nexus Copy.
+- `levels/`: archivos de referencia; los catálogos jugables siguen definidos en C#.
+- `docs/`: [arquitectura](docs/ARQUITECTURA.md) y [guía de clonación y CI](docs/GUIA-CLONACION-Y-CI.md).
+
+El logo ya existente y el icono de Windows provienen del proyecto NEXUS principal. Los personajes, jefes y fondos propios de esta copia permanecen separados.
+
+## GitHub Actions
+
+El workflow **Nexus Copy CI** compila en Windows en cada push o pull request hacia `main`. También se puede iniciar desde **Actions → Nexus Copy CI → Run workflow**. La salida compilada se publica como artefacto `NexusCopy-Windows`. El archivo está en `.github/workflows/main.yml`.
 
 La propuesta toma como inspiración general la fantasía de cazadores y portales, con universo, nombres, personajes y arte originales.
 

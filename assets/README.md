@@ -8,4 +8,5 @@ Usa nombres descriptivos y guarda aquí solo recursos propios o con licencia doc
 - `bosses/`: ilustraciones y animaciones de jefes.
 - `ui/`: iconos, marcos, botones y elementos HUD.
 - `audio/`: música y efectos; añade origen, autor, licencia y atribución en un README.
-- `menu-background.jpeg`: referencia visual aportada para el menú de Nexus Copy; se usa como fondo con áreas interactivas y datos de perfil dibujados por el juego.
+- `menu-background.jpeg`: referencia visual del menú de Nexus Copy; los botones de Windows Forms se colocan sobre los botones del arte.
+- `nexus-logo.png` y `nexus.ico`: recursos de marca e icono heredados del proyecto principal.

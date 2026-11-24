@@ -6,3 +6,14 @@ obj/
 *.suo
 *.log
 artifacts/
+TestResults/
+coverage/
+*.pdb
+*.cache
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+appsettings.Local.json
+secrets.json

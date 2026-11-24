@@ -1,1 +1,47 @@
+name: Nexus Copy CI
 
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nexus-copy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-build:
+    name: Build Nexus Copy for Windows
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore NuGet packages
+        run: dotnet restore "NexusCopy.sln"
+
+      - name: Build Release
+        run: dotnet build "NexusCopy.sln" --configuration Release --no-restore
+
+      - name: Publish Windows application
+        run: dotnet publish "NexusCopia.csproj" --configuration Release --no-restore --output artifacts/NexusCopy
+
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v6
+        with:
+          name: NexusCopy-Windows
+          path: artifacts/NexusCopy/**
+          if-no-files-found: error
+          retention-days: 14
