@@ -12,6 +12,8 @@ internal sealed class PlatformerForm : Form
     private readonly System.Windows.Forms.Timer _timer;
     private readonly Stopwatch _simulationClock = Stopwatch.StartNew();
     private double _simulationAccumulator;
+    private float _previousX = 65, _previousY = GroundY - PlayerHeight, _previousCamera;
+    private float _renderX = 65, _renderY = GroundY - PlayerHeight, _renderCamera, _renderInterpolation, _renderTicks;
     private readonly Button _saveButton;
     private DungeonDefinition _dungeon = null!;
     private readonly DifficultyDefinition _difficulty;
@@ -83,6 +85,7 @@ internal sealed class PlatformerForm : Form
         KeyUp += (_, e) => _held.Remove(e.KeyCode);
         Deactivate += (_, _) => _held.Clear();
         if (savedRun is not null) ApplySavedExpedition(savedRun);
+        ResetRenderInterpolation();
         _simulationAccumulator = 0;
         _simulationClock.Restart();
         _timer = new System.Windows.Forms.Timer { Interval = 8 };
@@ -100,13 +103,30 @@ internal sealed class PlatformerForm : Form
         int steps = 0;
         while (_simulationAccumulator >= fixedStep && steps < 5)
         {
+            _previousX = _x; _previousY = _y; _previousCamera = _camera;
+            foreach (Patroller enemy in _enemies) enemy.PreviousX = enemy.X;
             UpdateGame();
             _simulationAccumulator -= fixedStep;
             steps++;
         }
         // Evita que Windows provoque una ráfaga de pasos al mover o restaurar la ventana.
         if (steps == 5 && _simulationAccumulator > fixedStep * 2) _simulationAccumulator = fixedStep;
+        _renderInterpolation = Math.Clamp((float)(_simulationAccumulator / fixedStep), 0f, 1f);
+        _renderX = _previousX + (_x - _previousX) * _renderInterpolation;
+        _renderY = _previousY + (_y - _previousY) * _renderInterpolation;
+        _renderCamera = _previousCamera + (_camera - _previousCamera) * _renderInterpolation;
+        _renderTicks = Math.Max(0, _worldTicks - 1 + _renderInterpolation);
         _canvas.Invalidate();
+    }
+
+    private void ResetRenderInterpolation()
+    {
+        _previousX = _renderX = _x;
+        _previousY = _renderY = _y;
+        _previousCamera = _renderCamera = _camera;
+        _renderInterpolation = 1;
+        _renderTicks = _worldTicks;
+        foreach (Patroller enemy in _enemies) enemy.PreviousX = enemy.X;
     }
 
     private static Image LoadArt(string relativePath)
@@ -401,6 +421,7 @@ internal sealed class PlatformerForm : Form
         }
         LoadDungeon(_dungeonIndex + 1);
         _x = 65; _y = GroundY - PlayerHeight; _vx = _vy = _camera = 0; _checkpoint = 65;
+        ResetRenderInterpolation();
         _bossAttackCooldown = _bossWindup = _bossAttackIndex = 0; _bossAttack = null;
         _bossAwakened = _bossDefeated = _rewardClaimed = false; _rewardText = "";
         _hurtTicks = 75;
@@ -525,12 +546,15 @@ internal sealed class PlatformerForm : Form
         if (_lives <= 0) { _gameOver = true; SetNotice("Fin de la partida. Presiona R para intentarlo otra vez."); return; }
         _hurtTicks = 85;
         _x = _checkpoint; _y = GroundY - PlayerHeight - 5; _vx = _vy = 0;
+        _camera = Math.Clamp(_x - 330, 0, WorldWidth - 1100);
+        ResetRenderInterpolation();
         SetNotice($"¡Cuidado! Te queda{(_lives == 1 ? "" : "n")} {_lives} vida{(_lives == 1 ? "" : "s")}. Regresas al punto de control.");
     }
 
     private void ResetGame()
     {
         _x = 65; _y = GroundY - PlayerHeight; _vx = _vy = _camera = 0; _checkpoint = 65; _attackTicks = _attackCooldown = 0;
+        ResetRenderInterpolation();
         _lives = _difficulty.Lives; _score = 0; _hurtTicks = 0; _worldTicks = 0; _won = _gameOver = false; _held.Clear();
         _bossHealth = _bossMaxHealth; _bossAttackCooldown = _bossWindup = _bossAttackIndex = 0; _bossAttack = null;
         _bossWarningX.Clear(); _bossShots.Clear(); _enemyShots.Clear(); _hunterShots.Clear();
@@ -581,7 +605,7 @@ internal sealed class PlatformerForm : Form
         using (var sky = new LinearGradientBrush(viewport, _dungeon.SkyTop, _dungeon.SkyBottom, LinearGradientMode.Vertical)) g.FillRectangle(sky, viewport);
         _renderStage = "fondo";
         DrawBackdrop(g);
-        g.TranslateTransform(-_camera, 0);
+        g.TranslateTransform(-_renderCamera, 0);
         _renderStage = "mapa";
         DrawLevel(g);
         _renderStage = "cazador";
@@ -595,7 +619,7 @@ internal sealed class PlatformerForm : Form
     {
         // El fondo de cada mazmorra se desplaza a una velocidad menor que el mapa para dar profundidad.
         float tileWidth = 1100;
-        float offset = -((_camera * .20f) % tileWidth);
+        float offset = -((_renderCamera * .20f) % tileWidth);
         for (int i = -1; i < 3; i++)
             g.DrawImage(_dungeonBackground, new RectangleF(offset + i * tileWidth, 0, tileWidth, 620));
         using (var shade = new SolidBrush(Color.FromArgb(85, 4, 5, 16))) g.FillRectangle(shade, 0, 0, 1100, 620);
@@ -605,7 +629,7 @@ internal sealed class PlatformerForm : Form
     private void DrawAmbientEffects(Graphics g)
     {
         // Partículas ligeras, con movimiento distinto por mundo y coordenadas en pantalla para no marear la cámara.
-        float time = _worldTicks / 60f;
+        float time = _renderTicks / 60f;
         int count = _dungeon.Id == "bosque" ? 28 : 36;
         for (int i = 0; i < count; i++)
         {
@@ -651,7 +675,7 @@ internal sealed class PlatformerForm : Form
     {
         foreach (var p in _platforms)
         {
-            if (p.Right < _camera - 30 || p.Left > _camera + 1140) continue;
+            if (p.Right < _renderCamera - 30 || p.Left > _renderCamera + 1140) continue;
             using var ground = new LinearGradientBrush(p, _dungeon.GroundTop, _dungeon.GroundBottom, LinearGradientMode.Vertical); g.FillRectangle(ground, p);
             using var edge = new Pen(Color.FromArgb(190, _dungeon.Accent), 3); g.DrawLine(edge, p.Left, p.Top, p.Right, p.Top);
             using var seam = new Pen(Color.FromArgb(55, _dungeon.Accent), 1); for (float x = p.Left + 25; x < p.Right; x += 56) g.DrawLine(seam, x, p.Top + 8, x, Math.Min(p.Bottom, p.Top + 24));
@@ -662,7 +686,7 @@ internal sealed class PlatformerForm : Form
             using var crystal = new SolidBrush(Color.FromArgb(240, _dungeon.Accent)); g.FillPolygon(crystal, new[] { new PointF(shard.X, shard.Y - 9), new PointF(shard.X + 7, shard.Y), new PointF(shard.X, shard.Y + 9), new PointF(shard.X - 7, shard.Y) });
         }
         foreach (var trap in _traps) DrawTrap(g, trap);
-        foreach (var enemy in _enemies.Where(en => en.Alive)) DrawEnemy(g, enemy);
+        foreach (var enemy in _enemies.Where(en => en.Alive)) DrawEnemy(g, enemy, _renderInterpolation);
         foreach (var shot in _enemyShots) DrawCombatProjectile(g, shot);
         foreach (var shot in _bossShots) DrawCombatProjectile(g, shot);
         foreach (var shot in _hunterShots) DrawCombatProjectile(g, shot);
@@ -724,15 +748,16 @@ internal sealed class PlatformerForm : Form
         using var glow = new SolidBrush(Color.FromArgb(48, checkpoint ? 60 : 255, checkpoint ? 208 : 184, checkpoint ? 255 : 84)); g.FillEllipse(glow, x - 15, y - 113, 34, 34);
     }
 
-    private void DrawEnemy(Graphics g, Patroller enemy)
+    private void DrawEnemy(Graphics g, Patroller enemy, float interpolation)
     {
-        var body = new RectangleF(enemy.X, enemy.Y, 34, 30);
-        using var glow = new SolidBrush(Color.FromArgb(65, _dungeon.EnemyAttackColor)); g.FillEllipse(glow, enemy.X - 7, enemy.Y - 7, 48, 44);
+        float x = enemy.PreviousX + (enemy.X - enemy.PreviousX) * interpolation;
+        var body = new RectangleF(x, enemy.Y, 34, 30);
+        using var glow = new SolidBrush(Color.FromArgb(65, _dungeon.EnemyAttackColor)); g.FillEllipse(glow, x - 7, enemy.Y - 7, 48, 44);
         using var fill = new LinearGradientBrush(body, Color.FromArgb(245, _dungeon.EnemyAttackColor), Color.FromArgb(100, 16, 19, 40), LinearGradientMode.Vertical); g.FillEllipse(fill, body);
         using var outline = new Pen(Color.FromArgb(220, _dungeon.EnemyAttackColor), 1.5f); g.DrawEllipse(outline, body);
-        using var eyes = new SolidBrush(Color.FromArgb(255, 246, 235)); g.FillEllipse(eyes, enemy.X + 8, enemy.Y + 9, 5, 5); g.FillEllipse(eyes, enemy.X + 21, enemy.Y + 9, 5, 5);
-        using var back = new SolidBrush(Color.FromArgb(210, 13, 8, 24)); g.FillRectangle(back, enemy.X - 2, enemy.Y - 9, 38, 5);
-        using var hp = new SolidBrush(_dungeon.EnemyAttackColor); g.FillRectangle(hp, enemy.X, enemy.Y - 8, 34 * enemy.Health / (float)enemy.MaxHealth, 3);
+        using var eyes = new SolidBrush(Color.FromArgb(255, 246, 235)); g.FillEllipse(eyes, x + 8, enemy.Y + 9, 5, 5); g.FillEllipse(eyes, x + 21, enemy.Y + 9, 5, 5);
+        using var back = new SolidBrush(Color.FromArgb(210, 13, 8, 24)); g.FillRectangle(back, x - 2, enemy.Y - 9, 38, 5);
+        using var hp = new SolidBrush(_dungeon.EnemyAttackColor); g.FillRectangle(hp, x, enemy.Y - 8, 34 * enemy.Health / (float)enemy.MaxHealth, 3);
     }
 
     private void DrawBoss(Graphics g)
@@ -765,7 +790,7 @@ internal sealed class PlatformerForm : Form
         {
             float speed = MathF.Max(1, MathF.Sqrt(shot.Vx * shot.Vx + shot.Vy * shot.Vy));
             float cx = b.X + b.Width / 2, cy = b.Y + b.Height / 2;
-            float pulse = .9f + .1f * MathF.Sin(_worldTicks * .24f);
+            float pulse = .9f + .1f * MathF.Sin(_renderTicks * .24f);
             using var trail = new Pen(Color.FromArgb(115, shot.Color), 7) { StartCap = LineCap.Round, EndCap = LineCap.Round };
             using var trailCore = new Pen(Color.FromArgb(105, 255, 255, 255), 2) { StartCap = LineCap.Round, EndCap = LineCap.Round };
             g.DrawLine(trail, cx, cy, cx - shot.Vx / speed * 27, cy - shot.Vy / speed * 27);
@@ -783,7 +808,7 @@ internal sealed class PlatformerForm : Form
             using var rim = new Pen(Color.FromArgb(230, Color.White), 1.5f);
             g.DrawEllipse(rim, b);
             using var arc = new Pen(Color.FromArgb(205, 255, 255, 255), 1.4f);
-            g.DrawArc(arc, b.X + 3, b.Y + 2, Math.Max(2, b.Width - 6), Math.Max(2, b.Height - 5), _worldTicks * 5 % 360, 210);
+            g.DrawArc(arc, b.X + 3, b.Y + 2, Math.Max(2, b.Width - 6), Math.Max(2, b.Height - 5), _renderTicks * 5 % 360, 210);
             return;
         }
         using var glow = new SolidBrush(Color.FromArgb(85, shot.Color)); g.FillEllipse(glow, b.X - 10, b.Y - 8, b.Width + 20, b.Height + 16);
@@ -825,7 +850,7 @@ internal sealed class PlatformerForm : Form
 
     private void DrawPlayer(Graphics g)
     {
-        float x = _x, y = _y;
+        float x = _renderX, y = _renderY;
         float width = 94, height = 108;
         float drawX = x + PlayerWidth / 2 - width / 2, drawY = y + PlayerHeight - height;
         using var aura = new SolidBrush(Color.FromArgb(65, _profile.Hunter.Aura)); g.FillEllipse(aura, drawX - 10, drawY + 32, width + 20, height - 20);
@@ -951,6 +976,7 @@ internal sealed class PlatformerForm : Form
     private sealed class Patroller(float x, float y, float min, float max, int health, int attackCooldown)
     {
         public float X { get; set; } = x; public float Y { get; } = y; public float Min { get; } = min; public float Max { get; } = max;
+        public float PreviousX { get; set; } = x;
         public float Speed { get; set; } = 1.35f; public int Health { get; set; } = health; public int MaxHealth { get; } = health;
         public int AttackCooldown { get; set; } = attackCooldown; public bool Alive { get; set; } = true;
     }

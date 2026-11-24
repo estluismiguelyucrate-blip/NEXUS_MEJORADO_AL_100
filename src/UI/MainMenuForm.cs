@@ -16,6 +16,8 @@ internal sealed partial class MainMenuForm : Form
     private System.Windows.Forms.Timer _menuAnimation = null!;
     private long _lastMenuFrameTicks;
     private double _animationSeconds;
+    private float _pointerX = 0.78f, _pointerY = 0.48f;
+    private float _pointerTargetX = 0.78f, _pointerTargetY = 0.48f;
     private ExpeditionSave? _savedExpedition;
     private int _selectedDungeon;
     private int _selectedDifficulty = 1;
@@ -56,6 +58,10 @@ internal sealed partial class MainMenuForm : Form
         btnDifficulty.Click += (_, _) => CycleDifficulty();
         btnSettings.Click += (_, _) => ShowSettings();
         btnControls.Click += (_, _) => ShowControls();
+        btnProgress.Click += (_, _) => ShowProgress();
+        MouseMove += (_, _) => CaptureMenuPointer();
+        foreach (Control control in Controls)
+            control.MouseMove += (_, _) => CaptureMenuPointer();
         KeyDown += HandleKeyDown;
         _music.PlayMenu();
         FormClosed += (_, _) =>
@@ -94,10 +100,10 @@ internal sealed partial class MainMenuForm : Form
 
     private void UpdateMenuControls()
     {
-        btnDungeon.Text = $"◀  {DungeonCatalog.All[_selectedDungeon].Name.ToUpperInvariant()}  ▶";
-        btnHunter.Text = $"✦  {_profile.Hunter.Name.ToUpperInvariant()}";
-        DifficultyDefinition selected = DifficultyCatalog.All[_selectedDifficulty];
-        btnDifficulty.Text = $"DIFICULTAD · {selected.Name}";
+        // The selectors are actions; selected names and details belong to the menu info cards.
+        btnDungeon.Text = "◀  CAMBIAR MAZMORRA  ▶";
+        btnHunter.Text = "✦  CAMBIAR CAZADOR";
+        btnDifficulty.Text = "DIFICULTAD";
         btnContinue.Visible = true;
         btnContinue.Enabled = _savedExpedition is not null;
         btnContinue.Text = _savedExpedition is null ? "SIN PARTIDA" : "CONTINUAR";
@@ -114,8 +120,9 @@ internal sealed partial class MainMenuForm : Form
         Place(btnHunter, 64, 447, 328, 38, scale, offsetX, offsetY);
         Place(btnSettings, 64, 517, 328, 38, scale, offsetX, offsetY);
         Place(btnControls, 64, 587, 328, 38, scale, offsetX, offsetY);
-        Place(btnDifficulty, 52, 650, 174, 38, scale, offsetX, offsetY);
-        Place(btnContinue, 232, 650, 174, 38, scale, offsetX, offsetY);
+        Place(btnDifficulty, 52, 650, 108, 38, scale, offsetX, offsetY);
+        Place(btnContinue, 168, 650, 108, 38, scale, offsetX, offsetY);
+        Place(btnProgress, 284, 650, 108, 38, scale, offsetX, offsetY);
     }
 
     private static void Place(Control control, int x, int y, int width, int height, float scale, float offsetX, float offsetY) =>
@@ -129,7 +136,18 @@ internal sealed partial class MainMenuForm : Form
         _lastMenuFrameTicks = now;
         // Cap a delayed UI tick so returning from another window never causes a visual jump.
         _animationSeconds += Math.Min(elapsed, 0.05);
+        float blend = 1f - MathF.Exp(-(float)Math.Min(elapsed, 0.05) * 8f);
+        _pointerX += (_pointerTargetX - _pointerX) * blend;
+        _pointerY += (_pointerTargetY - _pointerY) * blend;
         Invalidate();
+    }
+
+    private void CaptureMenuPointer()
+    {
+        if (ClientSize.Width <= 0 || ClientSize.Height <= 0) return;
+        Point point = PointToClient(Cursor.Position);
+        _pointerTargetX = Math.Clamp(point.X / (float)ClientSize.Width, 0.32f, 0.98f);
+        _pointerTargetY = Math.Clamp(point.Y / (float)ClientSize.Height, 0.08f, 0.94f);
     }
 
     private void ToggleMusic()
@@ -185,6 +203,13 @@ internal sealed partial class MainMenuForm : Form
         "Usa CONTINUAR PARTIDA para reanudarla.",
         "Guía del cazador", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
+    private void ShowProgress() => MessageBox.Show(this,
+        $"CAZADOR · {_profile.Hunter.Name}\nRango {_profile.Rank} · {_profile.Experience} XP · {_profile.Credits} créditos\n" +
+        $"Mazmorras superadas: {_profile.ClearedDungeons}/{DungeonCatalog.All.Length}\nRécord: {_profile.BestScore}\n\n" +
+        $"Habilidad: {_profile.Hunter.AbilityName}\n{_profile.Hunter.AbilityHint}\n\n" +
+        $"Partida SQL: {(_savedExpedition is null ? "sin partida guardada" : "lista para continuar")}",
+        "Perfil y progreso", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
     private void StartDungeon()
     {
         using var game = new PlatformerForm(_selectedDungeon, _selectedDifficulty, _profile, _music);
@@ -226,16 +251,53 @@ internal sealed partial class MainMenuForm : Form
         var scene = new RectangleF(offsetX, offsetY, DesignWidth * scale, DesignHeight * scale);
         g.Clear(Color.FromArgb(4, 5, 15));
 
-        // Match the 16:9 key-art canvas without stretching it on ultrawide or 16:10 screens.
-        float cameraX = MathF.Sin((float)_animationSeconds * 0.42f) * 2.3f * scale;
-        float cameraY = MathF.Sin((float)_animationSeconds * 0.67f) * 1.1f * scale;
+        // Keep the original key art registered with its real buttons and move the ambient light instead.
         GraphicsState state = g.Save();
-        g.TranslateTransform(offsetX + cameraX, offsetY + cameraY);
+        g.TranslateTransform(offsetX, offsetY);
         var imageCanvas = new RectangleF(0, 0, DesignWidth * scale, DesignHeight * scale);
         g.DrawImage(_menuBackground, imageCanvas);
         g.Restore(state);
 
         DrawMenuAtmosphere(g, scene);
+        state = g.Save();
+        g.TranslateTransform(offsetX, offsetY);
+        g.ScaleTransform(scale, scale);
+        DrawSelectionCards(g);
+        g.Restore(state);
+    }
+
+    private void DrawSelectionCards(Graphics g)
+    {
+        HunterArchetype hunter = _profile.Hunter;
+        DungeonDefinition dungeon = DungeonCatalog.All[_selectedDungeon];
+        DifficultyDefinition difficulty = DifficultyCatalog.All[_selectedDifficulty];
+        using var card = new SolidBrush(Color.FromArgb(239, 8, 8, 22));
+        using var hunterBorder = new Pen(Color.FromArgb(210, hunter.Aura), 1.5f);
+        using var dungeonBorder = new Pen(Color.FromArgb(210, dungeon.Accent), 1.5f);
+        using var headerFont = new Font("Bahnschrift", 8.5f, FontStyle.Bold);
+        using var nameFont = new Font("Bahnschrift SemiBold", 14f, FontStyle.Bold);
+        using var detailFont = new Font("Bahnschrift", 8.4f, FontStyle.Regular);
+        using var mapFont = new Font("Bahnschrift SemiBold", 15f, FontStyle.Bold);
+        using var white = new SolidBrush(Color.FromArgb(246, 242, 255));
+        using var muted = new SolidBrush(Color.FromArgb(211, 199, 231));
+        using var accentHunter = new SolidBrush(hunter.Aura);
+        using var accentDungeon = new SolidBrush(dungeon.Accent);
+
+        // Reuse the art's top profile plate for the current hunter, progression and skill.
+        g.FillRectangle(card, 440, 25, 402, 83);
+        g.DrawRectangle(hunterBorder, 440, 25, 402, 83);
+        g.DrawString($"CAZADOR ACTIVO · {hunter.ClassName.ToUpperInvariant()} · RANGO {_profile.Rank}", headerFont, accentHunter, 458, 32);
+        g.DrawString($"{hunter.Name} · {hunter.Title}", nameFont, white, 458, 48);
+        g.DrawString($"HABILIDAD · {hunter.AbilityName} — {hunter.AbilityHint}", detailFont, muted, 458, 70);
+        g.DrawString($"{_profile.Experience} XP · {_profile.Credits} CRÉDITOS · {_profile.ClearedDungeons} MAZMORRAS", detailFont, muted, 458, 87);
+
+        // The lower title plate now follows the selected world instead of showing baked-in text.
+        g.FillRectangle(card, 450, 657, 540, 87);
+        g.DrawRectangle(dungeonBorder, 450, 657, 540, 87);
+        g.DrawString($"MAZMORRA {_selectedDungeon + 1}/{DungeonCatalog.All.Length} · {difficulty.Name}", headerFont, accentDungeon, 468, 662);
+        g.DrawString(dungeon.Name.ToUpperInvariant(), mapFont, white, 468, 678);
+        string attacks = string.Join(" / ", dungeon.BossAttacks.Select(attack => attack.Name));
+        g.DrawString($"JEFE: {dungeon.BossName} · {dungeon.Region} · {attacks}", detailFont, muted, 468, 704);
     }
 
     /// <summary>Interpolated 60 FPS ambient animation: drifting embers and the hunter's pulsing aura.</summary>
@@ -251,6 +313,15 @@ internal sealed partial class MainMenuForm : Form
         float auraSize = (190 + 12 * pulse) * scale;
         using (var aura = new SolidBrush(Color.FromArgb((int)(10 + 8 * pulse), 112, 63, 255)))
             g.FillEllipse(aura, centerX - auraSize / 2, centerY - auraSize * 0.72f, auraSize, auraSize * 1.44f);
+
+        // The portal light gently follows the pointer, keeping the menu background interactive.
+        float pointerX = scene.Left + _pointerX * scene.Width;
+        float pointerY = scene.Top + _pointerY * scene.Height;
+        float ripple = (90 + 18 * pulse) * scale;
+        using (var cursorGlow = new SolidBrush(Color.FromArgb(13, 145, 91, 255)))
+            g.FillEllipse(cursorGlow, pointerX - ripple, pointerY - ripple, ripple * 2, ripple * 2);
+        using (var cursorCore = new Pen(Color.FromArgb(35, 201, 162, 255), 1.2f))
+            g.DrawEllipse(cursorCore, pointerX - ripple * .28f, pointerY - ripple * .28f, ripple * .56f, ripple * .56f);
 
         // Deterministic particle paths make every rendered frame smooth and repeatable.
         for (int i = 0; i < 42; i++)

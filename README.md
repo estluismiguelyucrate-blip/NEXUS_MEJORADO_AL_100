@@ -32,11 +32,12 @@ dotnet publish .\NexusCopia.csproj --configuration Release --output .\artifacts\
 Después inicia `artifacts\NexusCopy\NexusCopia.exe`.
 
 
-Controles: `A/D` o flechas para moverse, `Espacio/W` para saltar, `J/X` para la habilidad y `F5` para guardar la partida en SQL. `Esc` guarda y vuelve al menú. En el menú, `V` cambia Recluta, Cazador y Monarca; el botón **Continuar partida · SQL** reanuda la última expedición guardada.
+Controles: `A/D` o flechas para moverse, `Espacio/W` para saltar, `J/X` para la habilidad y `F5` para guardar la partida en SQL. `Esc` guarda y vuelve al menú. En el menú, `V` cambia Recluta, Cazador y Monarca; las flechas recorren las mazmorras y `C` cambia de cazador. **Continuar** reanuda la última expedición guardada; **Progreso** abre el perfil SQL.
 
 ## Sistemas jugables
 
-- Menú principal con entrada a partida, selector de mapa y controles.
+- Menú principal con fondo reactivo al puntero, paneles de selección para mostrar el cazador, su clase y habilidad, y la mazmorra, su jefe y sus ataques. Los botones conservan etiquetas de acción: **Cambiar cazador** y **Cambiar mazmorra**.
+- Accesos directos de inicio para dificultad, continuar partida SQL, progreso del cazador, configuración y controles.
 - Tres cazadores originales seleccionables con ilustraciones propias y habilidades con nombre, alcance, daño y efectos diferentes: Eclipse Gemelo, Lanza Solar y Ráfaga Esmeralda.
 - Tres mazmorras jugables con los fondos ilustrados de cada mundo: caverna del Umbral, bosque mutado y bastión en ruinas. Las rutas llegan a 3.900 unidades, incluyen nuevos saltos y checkpoints.
 - Un jefe ilustrado y dos ataques telegráficos propios por mazmorra; los centinelas patrullan, disparan, resisten varios golpes y se pueden esquivar.
@@ -48,12 +49,14 @@ Controles: `A/D` o flechas para moverse, `Espacio/W` para saltar, `J/X` para la 
 - Progresión persistente de rango E a S, experiencia, créditos, récord y mazmorras completadas.
 - Música original sintetizada en ejecución para menú y combate; tecla `M` para activarla o silenciarla.
 - El menú mantiene el arte de fondo original; los botones de juego, selección, configuración y controles son controles reales de Windows Forms editables en el diseñador.
+- El fondo conserva su composición y responde al movimiento del puntero con luz ambiental interpolada. Los paneles de cazador/mazmorra se actualizan con la selección actual.
+- La simulación de los mapas avanza a paso fijo de 60 Hz y dibuja al cazador, la cámara, los centinelas y los efectos ambientales con interpolación entre pasos para reducir tirones.
 - Recursos de arte organizados por personaje, fondo, tileset, jefe, interfaz y audio.
 
 ## Estructura del proyecto
 
 - `src/UI/`: menú Windows Forms y su archivo Designer.
-- `src/Game/`: simulación, combate y catálogos de mazmorra y cazador.
+- `src/Game/`: simulación, combate, renderizado interpolado y catálogos de mazmorra y cazador.
 - `src/Models/`: perfil y estado guardable de la expedición.
 - `src/Data/`: carga y guardado del progreso SQL.
 - `src/Database/`: creación de base y tablas SQL Server desde C#.

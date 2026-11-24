@@ -12,6 +12,7 @@ partial class MainMenuForm
     private Button btnDifficulty = null!;
     private Button btnSettings = null!;
     private Button btnControls = null!;
+    private Button btnProgress = null!;
 
     protected override void Dispose(bool disposing)
     {
@@ -28,6 +29,7 @@ partial class MainMenuForm
         btnDifficulty = new Button();
         btnSettings = new Button();
         btnControls = new Button();
+        btnProgress = new Button();
         SuspendLayout();
         ConfigureMenuButton(btnPlay, "btnPlay", "▶  ENTRAR A LA MAZMORRA  ✦", Color.FromArgb(0, 146, 205), 11F);
         ConfigureMenuButton(btnContinue, "btnContinue", "CONTINUAR PARTIDA", Color.FromArgb(45, 27, 77), 9F);
@@ -36,6 +38,7 @@ partial class MainMenuForm
         ConfigureMenuButton(btnDifficulty, "btnDifficulty", "DIFICULTAD", Color.FromArgb(45, 27, 77), 9F);
         ConfigureMenuButton(btnSettings, "btnSettings", "⚙  CONFIGURACIÓN", Color.FromArgb(16, 12, 34), 10F);
         ConfigureMenuButton(btnControls, "btnControls", "⌨  CONTROLES Y OBJETIVOS", Color.FromArgb(16, 12, 34), 10F);
+        ConfigureMenuButton(btnProgress, "btnProgress", "PROGRESO", Color.FromArgb(45, 27, 77), 8.5F);
         btnContinue.Visible = true;
         btnContinue.Enabled = false;
         btnContinue.AccessibleName = "Continuar partida guardada en SQL";
@@ -45,7 +48,8 @@ partial class MainMenuForm
         btnHunter.AccessibleName = "Cambiar cazador";
         btnSettings.AccessibleName = "Configuración";
         btnControls.AccessibleName = "Controles y objetivos";
-        Controls.AddRange([btnPlay, btnContinue, btnDungeon, btnHunter, btnDifficulty, btnSettings, btnControls]);
+        btnProgress.AccessibleName = "Consultar rango y progreso";
+        Controls.AddRange([btnPlay, btnContinue, btnDungeon, btnHunter, btnDifficulty, btnSettings, btnControls, btnProgress]);
         // MainMenuForm
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
@@ -64,7 +68,7 @@ partial class MainMenuForm
         button.BackColor = color;
         button.FlatStyle = FlatStyle.Flat;
         button.FlatAppearance.BorderSize = 0;
-        if (name is "btnDifficulty" or "btnContinue")
+        if (name is "btnDifficulty" or "btnContinue" or "btnProgress")
         {
             button.FlatAppearance.BorderColor = Color.FromArgb(160, 107, 242);
             button.FlatAppearance.BorderSize = 1;
@@ -80,10 +84,10 @@ partial class MainMenuForm
             "btnPlay" => new Point(64, 303), "btnDungeon" => new Point(64, 378),
             "btnHunter" => new Point(64, 447), "btnSettings" => new Point(64, 517),
             "btnControls" => new Point(64, 587), "btnDifficulty" => new Point(52, 650),
-            "btnContinue" => new Point(234, 650), _ => Point.Empty
+            "btnContinue" => new Point(168, 650), "btnProgress" => new Point(284, 650), _ => Point.Empty
         };
-        button.Size = name is "btnDifficulty" or "btnContinue" ? new Size(174, 38) : new Size(328, 38);
-        button.TabIndex = name switch { "btnPlay" => 0, "btnDungeon" => 1, "btnHunter" => 2, "btnSettings" => 3, "btnControls" => 4, "btnDifficulty" => 5, _ => 6 };
+        button.Size = name is "btnDifficulty" or "btnContinue" or "btnProgress" ? new Size(108, 38) : new Size(328, 38);
+        button.TabIndex = name switch { "btnPlay" => 0, "btnDungeon" => 1, "btnHunter" => 2, "btnSettings" => 3, "btnControls" => 4, "btnDifficulty" => 5, "btnContinue" => 6, _ => 7 };
         button.Text = text;
         button.UseVisualStyleBackColor = false;
         button.Cursor = Cursors.Hand;
