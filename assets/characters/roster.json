@@ -1,0 +1,19 @@
+[
+  {
+    "id": "vanguard",
+    "name": "Cazador del Umbral",
+    "rank": "E",
+    "class": "Vanguardia",
+    "sprite": "assets/umbral-caballero.png",
+    "status": "playable"
+  },
+  {
+    "id": "arcanist",
+    "name": "Tejedor de Ecos",
+    "rank": "S",
+    "class": "Arcanista",
+    "sprite": "assets/characters/arcanist.png",
+    "status": "planned"
+  }
+]
+
