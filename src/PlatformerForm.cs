@@ -24,6 +24,7 @@ internal sealed class PlatformerForm : Form
     private float _checkpoint = 65;
     private bool _grounded, _facingRight = true, _won, _gameOver;
     private int _attackTicks, _attackCooldown;
+    private int _worldTicks;
     private int _lives = 3, _score;
     private int _hurtTicks;
     private int _bossHealth = 6, _bossAttackCooldown, _bossWindup, _bossAttackIndex;
@@ -106,6 +107,7 @@ internal sealed class PlatformerForm : Form
         if (_won || _gameOver) return;
         if (_noticeTicks > 0) _noticeTicks--;
         if (_hurtTicks > 0) _hurtTicks--;
+        _worldTicks++;
         if (_bossAttackCooldown > 0) _bossAttackCooldown--;
         if (_attackTicks > 0) _attackTicks--;
         if (_attackCooldown > 0) _attackCooldown--;
@@ -386,12 +388,52 @@ internal sealed class PlatformerForm : Form
         for (int i = -1; i < 3; i++)
             g.DrawImage(_dungeonBackground, new RectangleF(offset + i * tileWidth, 0, tileWidth, 620));
         using (var shade = new SolidBrush(Color.FromArgb(85, 4, 5, 16))) g.FillRectangle(shade, 0, 0, 1100, 620);
-        using var stars = new SolidBrush(Color.FromArgb(170, 222, 212, 255));
-        for (int i = 0; i < 95; i++) { float x = (i * 137 % 1100 + _camera * .14f) % 1100; float y = 28 + i * 47 % 290; g.FillEllipse(stars, x, y, i % 3 == 0 ? 2.5f : 1.5f, i % 3 == 0 ? 2.5f : 1.5f); }
-        using var moonGlow = new SolidBrush(Color.FromArgb(28, 198, 143, 255)); g.FillEllipse(moonGlow, 765, 65, 200, 200);
-        using var moon = new LinearGradientBrush(new Rectangle(800, 100, 130, 130), Color.FromArgb(233, 226, 255), Color.FromArgb(112, 94, 174), LinearGradientMode.ForwardDiagonal); g.FillEllipse(moon, 800, 100, 130, 130);
-        using var far = new SolidBrush(Color.FromArgb(45, 12, 11, 41));
-        for (int i = 0; i < 13; i++) { float x = (i * 177 - _camera * .32f) % 1450; if (x < -90) x += 1450; float h = 105 + i * 37 % 120; g.FillRectangle(far, x, 415 - h, 64, h); g.FillPolygon(far, new[] { new PointF(x - 12, 415 - h + 10), new PointF(x + 32, 385 - h), new PointF(x + 76, 415 - h + 10) }); }
+        DrawAmbientEffects(g);
+    }
+
+    private void DrawAmbientEffects(Graphics g)
+    {
+        // Partículas ligeras, con movimiento distinto por mundo y coordenadas en pantalla para no marear la cámara.
+        float time = _worldTicks / 60f;
+        int count = _dungeon.Id == "bosque" ? 28 : 36;
+        for (int i = 0; i < count; i++)
+        {
+            float seed = i * 83.17f;
+            float drift = _dungeon.Id == "ciudad" ? -.35f : _dungeon.Id == "bosque" ? .55f : .15f;
+            float x = (seed + time * (12 + i % 9) * drift + 1100) % 1100;
+            float y = _dungeon.Id == "ciudad"
+                ? 570 - ((i * 29 + time * (10 + i % 6)) % 570)
+                : _dungeon.Id == "bosque"
+                    ? (i * 71 + MathF.Sin(time * 1.4f + i) * 34 + time * 8) % 535
+                    : 35 + (i * 53 + time * (13 + i % 7)) % 485;
+            int pulse = (int)(95 + 80 * (0.5f + 0.5f * MathF.Sin(time * 2 + i * 1.7f)));
+            Color tint = _dungeon.Id == "bosque" ? Color.FromArgb(pulse, i % 3 == 0 ? 255 : 127, i % 3 == 0 ? 166 : 255, 94)
+                : _dungeon.Id == "ciudad" ? Color.FromArgb(pulse, 255, 119 + i % 3 * 25, 54)
+                : Color.FromArgb(pulse, 179 + i % 3 * 25, 113, 255);
+            using var particle = new SolidBrush(tint);
+            float size = 2 + i % 4;
+            if (_dungeon.Id == "umbral")
+            {
+                g.FillPolygon(particle, new[] { new PointF(x, y - size * 1.7f), new PointF(x + size, y), new PointF(x, y + size * 1.7f), new PointF(x - size, y) });
+            }
+            else if (_dungeon.Id == "bosque")
+            {
+                GraphicsState state = g.Save();
+                g.TranslateTransform(x, y); g.RotateTransform((float)(Math.Sin(time + i) * 55));
+                g.FillEllipse(particle, -size, -size * .45f, size * 2.2f, size * .9f);
+                g.Restore(state);
+            }
+            else
+            {
+                g.FillEllipse(particle, x, y, size, size * 1.8f);
+                using var trail = new Pen(Color.FromArgb(pulse / 2, tint), 1);
+                g.DrawLine(trail, x + size / 2, y + size, x + size / 2 - 4, y + size * 3);
+            }
+        }
+        // Pulsos de energía ambiental en la parte baja: aportan vida sin cubrir la zona de combate.
+        int beat = (int)(20 + 18 * (0.5 + 0.5 * Math.Sin(time * (_dungeon.Id == "ciudad" ? 1.5 : 1.0))));
+        using var floorGlow = new SolidBrush(Color.FromArgb(beat, _dungeon.Accent));
+        g.FillEllipse(floorGlow, 210, 500, 680, 90);
     }
 
     private void DrawLevel(Graphics g)
