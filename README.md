@@ -32,14 +32,17 @@ dotnet publish .\NexusCopia.csproj --configuration Release --output .\artifacts\
 Después inicia `artifacts\NexusCopy\NexusCopia.exe`.
 
 
-Controles: `A/D` o flechas para moverse, `Espacio/W` para saltar y `J/X` para atacar.
+Controles: `A/D` o flechas para moverse, `Espacio/W` para saltar y `J/X` para activar la habilidad. En el menú usa `V` o haz clic en el selector para alternar Recluta, Cazador y Monarca.
 
 ## Sistemas jugables
 
 - Menú principal con entrada a partida, selector de mapa y controles.
 - Tres cazadores originales seleccionables con ilustraciones propias y habilidades con nombre, alcance, daño y efectos diferentes: Eclipse Gemelo, Lanza Solar y Ráfaga Esmeralda.
-- Tres mazmorras jugables con los fondos ilustrados de cada mundo: caverna del Umbral, bosque mutado y bastión en ruinas.
+- Tres mazmorras jugables con los fondos ilustrados de cada mundo: caverna del Umbral, bosque mutado y bastión en ruinas. Las rutas llegan a 3.900 unidades, incluyen nuevos saltos y checkpoints.
 - Un jefe ilustrado y dos ataques telegráficos propios por mazmorra; los centinelas patrullan, disparan, resisten varios golpes y se pueden esquivar.
+- Trampas de púas con aviso visual, ciclo de activación, variaciones de dificultad y paso directo a la siguiente mazmorra después de cada jefe.
+- Dificultades con vidas y resistencia/ritmo de ataque diferentes. La expedición mantiene las vidas y el puntaje entre mundos.
+- Habilidades con proyectiles reales: la Lanza Solar de Ariadna, la Ráfaga Esmeralda triple de Kael y el combo cuerpo a cuerpo Eclipse Gemelo de Soren.
 - Combate, fragmentos coleccionables, puntos de control, vidas, barra de jefe y extracción tras derrotarlo.
 - Progresión persistente de rango E a S, experiencia, créditos, récord y mazmorras completadas.
 - Música original sintetizada en ejecución para menú y combate; tecla `M` para activarla o silenciarla.

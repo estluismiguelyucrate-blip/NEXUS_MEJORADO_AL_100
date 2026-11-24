@@ -22,6 +22,7 @@ internal sealed class MainMenuForm : Form
     private readonly SolidBrush[] _moteBrushes = Enumerable.Range(0, 4)
         .Select(i => new SolidBrush(Color.FromArgb(110 + i * 35, 190, 126, 255))).ToArray();
     private int _selectedDungeon;
+    private int _selectedDifficulty = 1;
     private string _hovered = "";
 
     public MainMenuForm()
@@ -81,6 +82,10 @@ internal sealed class MainMenuForm : Form
         {
             ChangeHunter(); e.Handled = true;
         }
+        else if (e.KeyCode == Keys.V)
+        {
+            CycleDifficulty(); e.Handled = true;
+        }
     }
 
     private void HandleMouseMove(object? sender, MouseEventArgs e)
@@ -107,6 +112,7 @@ internal sealed class MainMenuForm : Form
                 Invalidate();
                 break;
             case "hunter": ChangeHunter(); break;
+            case "difficulty": CycleDifficulty(); break;
             case "settings": ShowSettings(); break;
             case "controls": ShowControls(); break;
         }
@@ -125,12 +131,19 @@ internal sealed class MainMenuForm : Form
         if (new RectangleF(42, 435, 370, 64).Contains(p)) return "hunter";
         if (new RectangleF(42, 505, 370, 65).Contains(p)) return "settings";
         if (new RectangleF(42, 575, 370, 69).Contains(p)) return "controls";
+        if (new RectangleF(42, 650, 370, 65).Contains(p)) return "difficulty";
         return "";
     }
 
     private void ToggleMusic()
     {
         _music.Toggle();
+        Invalidate();
+    }
+
+    private void CycleDifficulty()
+    {
+        _selectedDifficulty = (_selectedDifficulty + 1) % DifficultyCatalog.All.Length;
         Invalidate();
     }
 
@@ -168,14 +181,14 @@ internal sealed class MainMenuForm : Form
 
     private void ShowControls() => MessageBox.Show(this,
         "A / D o flechas: moverse · Espacio / W / ↑: saltar · J / X: atacar\n" +
-        "Flechas izquierda/derecha en el menú: cambiar mazmorra · Enter: entrar\nM: música · C: cambiar cazador · Esc: volver al menú\n\n" +
+        "Flechas izquierda/derecha en el menú: cambiar mazmorra · Enter: entrar\nM: música · C: cazador · V: dificultad · Esc: volver al menú\n\n" +
         "Explora la falla, reúne ecos y derrota al jefe. Cada victoria concede experiencia y créditos " +
         "para subir de rango desde E hasta S. El progreso se guarda automáticamente.",
         "Guía del cazador", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
     private void StartDungeon()
     {
-        using var game = new PlatformerForm(_selectedDungeon, _profile, _music);
+        using var game = new PlatformerForm(_selectedDungeon, _selectedDifficulty, _profile, _music);
         game.ShowDialog(this);
         Invalidate();
     }
@@ -238,6 +251,7 @@ internal sealed class MainMenuForm : Form
             "hunter" => new(50, 439, 356, 53),
             "settings" => new(50, 509, 356, 53),
             "controls" => new(50, 579, 356, 53),
+            "difficulty" => new(48, 650, 358, 58),
             _ => RectangleF.Empty
         };
         if (rect.IsEmpty) return;
@@ -285,5 +299,28 @@ internal sealed class MainMenuForm : Form
         g.DrawString($"●  {ProgressStore.StorageStatus}", statsFont, muted, 20, 741);
         g.FillRectangle(footerBg, 1200, 735, 160, 33);
         g.DrawString(_music.Enabled ? "♫ MÚSICA: SÍ" : "♫ MÚSICA: NO", statsFont, muted, new RectangleF(1208, 741, 148, 20));
+
+        RectangleF difficultyBox = new(42, 650, 370, 58);
+        using var difficultyBack = new SolidBrush(Color.FromArgb(238, 9, 8, 25));
+        using var difficultyEdge = new Pen(_hovered == "difficulty" ? Color.FromArgb(255, 208, 173, 255) : Color.FromArgb(185, 159, 111, 244), _hovered == "difficulty" ? 2.4f : 1.4f);
+        using var difficultyLabel = new Font("Segoe UI", 8, FontStyle.Bold);
+        using var difficultyValue = new Font("Segoe UI", 12, FontStyle.Bold);
+        using var difficultyHint = new Font("Segoe UI", 7, FontStyle.Regular);
+        g.FillRectangle(difficultyBack, difficultyBox);
+        g.DrawRectangle(difficultyEdge, Rectangle.Round(difficultyBox));
+        DifficultyDefinition selected = DifficultyCatalog.All[_selectedDifficulty];
+        Color difficultyColor = _selectedDifficulty switch { 0 => Color.FromArgb(103, 241, 196), 2 => Color.FromArgb(255, 112, 150), _ => Color.FromArgb(152, 199, 255) };
+        using var difficultyBrush = new SolidBrush(difficultyColor);
+        var alignCenter = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+        g.DrawString("DIFICULTAD · V / CLIC PARA CAMBIAR", difficultyLabel, muted, new RectangleF(52, 653, 350, 18), alignCenter);
+        g.DrawString(selected.Name, difficultyValue, difficultyBrush, new RectangleF(52, 672, 350, 25), alignCenter);
+        using var hintBrush = new SolidBrush(Color.FromArgb(190, 196, 192, 219));
+        string difficultyDescription = _selectedDifficulty switch
+        {
+            0 => "5 vidas · enemigos y jefes más accesibles",
+            2 => "2 vidas · enemigos resistentes · jefes feroces",
+            _ => "3 vidas · desafío equilibrado"
+        };
+        g.DrawString(difficultyDescription, difficultyHint, hintBrush, new RectangleF(54, 694, 346, 12), alignCenter);
     }
 }
