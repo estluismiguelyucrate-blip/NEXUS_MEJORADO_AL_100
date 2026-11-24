@@ -11,7 +11,6 @@ internal sealed class PlatformerForm : Form
     private readonly DungeonDefinition _dungeon;
     private readonly HunterProgress _profile;
     private readonly OriginalMusic _music;
-    private readonly Image? _knightSprite;
     private readonly HashSet<Keys> _held = new();
     private readonly List<RectangleF> _platforms = new();
     private readonly List<Shard> _shards = new();
@@ -25,6 +24,7 @@ internal sealed class PlatformerForm : Form
     private bool _bossAwakened, _bossDefeated;
     private bool _rewardClaimed;
     private string _rewardText = "";
+    private string _renderStage = "inicio";
     private string _notice = "Corre, salta y recoge los fragmentos de energía.";
     private int _noticeTicks = 220;
 
@@ -39,9 +39,7 @@ internal sealed class PlatformerForm : Form
         StartPosition = FormStartPosition.CenterParent;
         BackColor = Color.FromArgb(7, 8, 22);
         KeyPreview = true;
-        string spritePath = Path.Combine(AppContext.BaseDirectory, "assets", "umbral-caballero.png");
-        if (File.Exists(spritePath)) _knightSprite = Image.FromFile(spritePath);
-        _canvas = new Panel { Dock = DockStyle.Fill, BackColor = Color.FromArgb(12, 12, 34) };
+        _canvas = new GameCanvas { Dock = DockStyle.Fill, BackColor = Color.FromArgb(12, 12, 34) };
         _canvas.Paint += PaintWorld;
         _canvas.Resize += (_, _) => _canvas.Invalidate();
         Controls.Add(_canvas);
@@ -53,7 +51,7 @@ internal sealed class PlatformerForm : Form
         _timer.Tick += (_, _) => { UpdateGame(); _canvas.Invalidate(); };
         _timer.Start();
         _music.PlayBattle();
-        FormClosed += (_, _) => { _timer.Dispose(); _knightSprite?.Dispose(); _music.PlayMenu(); };
+        FormClosed += (_, _) => { _timer.Stop(); _timer.Dispose(); _music.PlayMenu(); };
     }
 
     private void SeedLevel()
@@ -201,18 +199,49 @@ internal sealed class PlatformerForm : Form
 
     private void PaintWorld(object? sender, PaintEventArgs e)
     {
-        Graphics g = e.Graphics;
+        try
+        {
+            PaintWorldFrame(e.Graphics);
+        }
+        catch (Exception ex)
+        {
+            e.Graphics.ResetTransform();
+            using var panel = new SolidBrush(Color.FromArgb(235, 33, 8, 28));
+            using var border = new Pen(Color.FromArgb(255, 255, 90, 120), 2);
+            using var font = new Font("Segoe UI", 11, FontStyle.Bold);
+            using var brush = new SolidBrush(Color.White);
+            var message = $"ERROR DE ESCENA [{_renderStage}]: {ex.GetType().Name} · {ex.Message}";
+            e.Graphics.FillRectangle(panel, 12, 110, Math.Max(200, _canvas.ClientSize.Width - 24), 58);
+            e.Graphics.DrawRectangle(border, 12, 110, Math.Max(200, _canvas.ClientSize.Width - 24), 58);
+            e.Graphics.DrawString(message, font, brush, new RectangleF(22, 116, Math.Max(180, _canvas.ClientSize.Width - 44), 48));
+            try
+            {
+                string log = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NexusCopy", "render-error.log");
+                Directory.CreateDirectory(Path.GetDirectoryName(log)!);
+                File.AppendAllText(log, $"{DateTime.Now:O} [{_renderStage}] {ex}\n\n");
+            }
+            catch { }
+        }
+    }
+
+    private void PaintWorldFrame(Graphics g)
+    {
+        _renderStage = "medidas";
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.InterpolationMode = InterpolationMode.HighQualityBicubic;
         float sx = _canvas.ClientSize.Width / 1100f, sy = _canvas.ClientSize.Height / 620f;
         g.ScaleTransform(sx, sy);
         var viewport = new Rectangle(0, 0, 1100, 620);
         using (var sky = new LinearGradientBrush(viewport, _dungeon.SkyTop, _dungeon.SkyBottom, LinearGradientMode.Vertical)) g.FillRectangle(sky, viewport);
+        _renderStage = "fondo";
         DrawBackdrop(g);
         g.TranslateTransform(-_camera, 0);
+        _renderStage = "mapa";
         DrawLevel(g);
+        _renderStage = "cazador";
         DrawPlayer(g);
         g.ResetTransform(); g.ScaleTransform(sx, sy);
+        _renderStage = "interfaz";
         DrawHud(g);
     }
 
@@ -280,12 +309,6 @@ internal sealed class PlatformerForm : Form
     private void DrawPlayer(Graphics g)
     {
         float x = _x, y = _y;
-        if (_knightSprite is not null)
-        {
-            g.DrawImage(_knightSprite, x - 17, y - 41, 82, 104);
-            if (_attackTicks > 0) DrawHunterSkill(g, x, y);
-            return;
-        }
         using var aura = new SolidBrush(Color.FromArgb(60, _profile.Hunter.Aura)); g.FillEllipse(aura, x - 12, y + 13, 70, 62);
         using var armor = new SolidBrush(Color.FromArgb(12, 15, 28));
         using var armorEdge = new Pen(Color.FromArgb(255, 42, 185, 255), 2.2f);
@@ -367,7 +390,8 @@ internal sealed class PlatformerForm : Form
         using var plate = new SolidBrush(Color.FromArgb(220, 10, 9, 30)); FillRoundRect(g, plate, 22, 20, 390, 72, 14);
         using var border = new Pen(Color.FromArgb(130, 153, 118, 255), 1); DrawRoundRect(g, border, 22, 20, 390, 72, 14);
         using var title = new Font("Bahnschrift", 15, FontStyle.Bold); using var small = new Font("Bahnschrift", 9, FontStyle.Bold); using var brush = new SolidBrush(Color.White); using var muted = new SolidBrush(Color.FromArgb(197, 188, 224));
-        g.DrawString(_dungeon.Name.ToUpperInvariant(), title, brush, 39, 29); g.DrawString($"RANGO {_profile.Rank} · {_profile.Hunter.ClassName} · PUNTOS {_score:0000} · VIDAS {new string('♥', _lives)}", small, new SolidBrush(_profile.Hunter.Aura), 40, 62);
+        using var hunterBrush = new SolidBrush(_profile.Hunter.Aura);
+        g.DrawString(_dungeon.Name.ToUpperInvariant(), title, brush, 39, 29); g.DrawString($"RANGO {_profile.Rank} · {_profile.Hunter.ClassName} · PUNTOS {_score:0000} · VIDAS {new string('♥', _lives)}", small, hunterBrush, 40, 62);
         using var help = new SolidBrush(Color.FromArgb(205, 10, 9, 30)); FillRoundRect(g, help, 770, 20, 308, 54, 12); using var helpFont = new Font("Bahnschrift", 8.5f, FontStyle.Bold); g.DrawString("A / D MOVER · ESPACIO SALTAR · J / X HABILIDAD · M MÚSICA", helpFont, muted, 785, 38);
         if (_noticeTicks > 0 || _won || _gameOver)
         {
@@ -402,5 +426,13 @@ internal sealed class PlatformerForm : Form
 
     private sealed class Shard(float x, float y) { public float X { get; } = x; public float Y { get; } = y; public bool Collected { get; set; } }
     private sealed class Patroller(float x, float y, float min, float max) { public float X { get; set; } = x; public float Y { get; } = y; public float Min { get; } = min; public float Max { get; } = max; public float Speed { get; set; } = 1.35f; public bool Alive { get; set; } = true; }
-}
 
+    private sealed class GameCanvas : Panel
+    {
+        public GameCanvas()
+        {
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+            UpdateStyles();
+        }
+    }
+}
