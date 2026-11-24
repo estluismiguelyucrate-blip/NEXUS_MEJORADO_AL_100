@@ -10,6 +10,9 @@ internal sealed class MainMenuForm : Form
     private readonly HunterProgress _profile = ProgressStore.Load();
     private readonly OriginalMusic _music = new();
     private readonly Image _menuBackground;
+    private readonly Image _hunterSprite;
+    private readonly System.Windows.Forms.Timer _idleTimer;
+    private double _idleTime;
     private int _selectedDungeon;
     private string _hovered = "";
 
@@ -25,10 +28,15 @@ internal sealed class MainMenuForm : Form
         KeyPreview = true;
         Cursor = Cursors.Default;
 
-        string artPath = Path.Combine(AppContext.BaseDirectory, "assets", "menu-background.jpeg");
-        if (!File.Exists(artPath))
-            throw new FileNotFoundException("Falta assets/menu-background.jpeg. Vuelve a extraer el repositorio completo y compila NexusCopy.sln.", artPath);
+        string artPath = Path.Combine(AppContext.BaseDirectory, "assets", "backgrounds", "menu-background-clean.jpg");
+        string spritePath = Path.Combine(AppContext.BaseDirectory, "assets", "characters", "menu-hunter.png");
+        if (!File.Exists(artPath) || !File.Exists(spritePath))
+            throw new FileNotFoundException("Faltan las capas animadas del menú. Vuelve a extraer el repositorio completo y compila NexusCopy.sln.", !File.Exists(artPath) ? artPath : spritePath);
         _menuBackground = Image.FromFile(artPath);
+        _hunterSprite = Image.FromFile(spritePath);
+        _idleTimer = new System.Windows.Forms.Timer { Interval = 33 };
+        _idleTimer.Tick += (_, _) => { _idleTime += 0.033; Invalidate(); };
+        _idleTimer.Start();
         _selectedDungeon = Math.Clamp(_profile.ClearedDungeons, 0, DungeonCatalog.All.Length - 1);
 
         MouseMove += HandleMouseMove;
@@ -36,7 +44,7 @@ internal sealed class MainMenuForm : Form
         MouseClick += HandleMenuClick;
         KeyDown += HandleKeyDown;
         _music.PlayMenu();
-        FormClosed += (_, _) => { _music.Dispose(); _menuBackground.Dispose(); };
+        FormClosed += (_, _) => { _idleTimer.Stop(); _idleTimer.Dispose(); _music.Dispose(); _menuBackground.Dispose(); _hunterSprite.Dispose(); };
     }
 
     private void HandleKeyDown(object? sender, KeyEventArgs e)
@@ -156,8 +164,49 @@ internal sealed class MainMenuForm : Form
         float sx = ClientSize.Width / DesignWidth, sy = ClientSize.Height / DesignHeight;
         g.ScaleTransform(sx, sy);
         g.DrawImage(_menuBackground, new RectangleF(0, 0, DesignWidth, DesignHeight));
+        DrawHunterIdle(g);
         DrawHover(g);
         DrawDynamicPanels(g);
+    }
+
+    private void DrawHunterIdle(Graphics g)
+    {
+        float sway = MathF.Sin((float)_idleTime * 1.15f) * 3.0f;
+        float bob = MathF.Sin((float)_idleTime * 2.3f) * 2.1f;
+        RectangleF body = new(578 + sway, 91 + bob, 714, 662);
+        // The original hunter cutout gets a living violet aura and a gentle cloak-like sway.
+        using (var aura = new Pen(Color.FromArgb(34, 171, 82, 255), 13))
+        using (var glow = new Pen(Color.FromArgb(24, 210, 111, 255), 25))
+        {
+            g.DrawEllipse(glow, 810 + sway, 122 + bob, 320, 440);
+            g.DrawEllipse(aura, 835 + sway, 145 + bob, 270, 385);
+        }
+        g.DrawImage(_hunterSprite, body);
+
+        float pulse = 0.5f + 0.5f * MathF.Sin((float)_idleTime * 4.4f);
+        PointF sword = new(752 + sway, 637 + bob);
+        PointF tip = new(805 + sway, 574 + bob);
+        using (var glow = new Pen(Color.FromArgb((int)(35 + 50 * pulse), 155, 68, 255), 16))
+        using (var edge = new Pen(Color.FromArgb((int)(150 + 80 * pulse), 206, 142, 255), 4))
+        using (var core = new Pen(Color.FromArgb(220, 238, 226, 255), 1.6f))
+        {
+            glow.StartCap = glow.EndCap = LineCap.Round;
+            edge.StartCap = edge.EndCap = LineCap.Round;
+            core.StartCap = core.EndCap = LineCap.Round;
+            g.DrawLine(glow, sword, tip);
+            g.DrawLine(edge, sword, tip);
+            g.DrawLine(core, sword, tip);
+        }
+
+        for (int i = 0; i < 8; i++)
+        {
+            float phase = (float)_idleTime * (0.65f + i * 0.035f) + i * 0.91f;
+            float x = 670 + i * 68 + MathF.Sin(phase) * 10;
+            float y = 185 + (float)((_idleTime * (25 + i * 3) + i * 97) % 470);
+            float size = 2.2f + (i % 3) * 1.2f;
+            using var mote = new SolidBrush(Color.FromArgb(100 + (int)(100 * pulse), 190, 126, 255));
+            g.FillEllipse(mote, x, y, size, size * 1.8f);
+        }
     }
 
     private void DrawHover(Graphics g)
