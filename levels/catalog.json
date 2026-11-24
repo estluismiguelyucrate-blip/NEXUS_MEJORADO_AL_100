@@ -1,0 +1,6 @@
+[
+  { "id": "umbral", "name": "Ruinas del Umbral", "status": "playable", "scene": "levels/umbral.json", "boss": "El Guardián del Umbral" },
+  { "id": "bosque", "name": "Bosque Carmesí", "status": "planned", "scene": null, "boss": null },
+  { "id": "ciudad", "name": "Ciudad Sumergida", "status": "planned", "scene": null, "boss": null }
+]
+
