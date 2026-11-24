@@ -4,11 +4,14 @@ Proyecto independiente de **NEXUS**, concebido como una aventura 2D de cazadores
 
 ## Ejecutar
 
-Requiere Windows y .NET 10 SDK con Windows Forms:
+Requiere Windows y el SDK de .NET 10 con Windows Forms. Al clonar, primero restaura los recursos de compilación, porque `obj/` no se guarda en Git:
 
 ```powershell
-dotnet run --project "NexusCopia.csproj"
+dotnet restore .\NexusCopy.sln
+dotnet run --project .\NexusCopia.csproj
 ```
+
+En Visual Studio, abre `NexusCopy.sln`, espera a que termine la restauración de NuGet y luego inicia `NexusCopia`. Si sale `NETSDK1004` indicando que falta `obj\project.assets.json`, ejecuta el comando `dotnet restore` anterior en la terminal ubicada en la carpeta del proyecto.
 
 Controles: `A/D` o flechas para moverse, `Espacio/W` para saltar y `J/X` para atacar.
 
