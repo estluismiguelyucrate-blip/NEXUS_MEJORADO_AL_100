@@ -8,7 +8,7 @@ Requiere Windows, el SDK de .NET 10 con Windows Forms y una instancia de SQL Ser
 
 ```powershell
 git clone https://github.com/estluismiguelyucrate-blip/NEXUS_MEJORADO_AL_100.git
-cd repooooo
+cd NEXUS_MEJORADO_AL_100
 dotnet restore .\NexusCopy.sln
 dotnet run --project .\NexusCopia.csproj
 ```
