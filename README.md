@@ -55,10 +55,12 @@ El juego sintetiza una banda sonora original de fantasía con energía de anime:
 
 El progreso se guarda **exclusivamente en SQL Server**, en la base `NexusCopyDb` y tabla `dbo.HunterProgress`. SQL Server LocalDB es la conexión predeterminada. Al iniciar, el juego crea la base, la tabla y el perfil si aún no existen. No usa archivos JSON ni otro almacenamiento para el progreso. Si SQL Server no está instalado, iniciado o accesible, el juego muestra un error y no inicia una partida que no pueda guardar.
 
+La aplicación ya fue abierta correctamente contra SQL Server LocalDB después de corregir la consulta de creación de base. Si vas a compilar desde Visual Studio, asegúrate de restaurar los paquetes NuGet y de tener iniciada la instancia `MSSQLLocalDB`.
+
 Para una instancia de SQL Server distinta, define `NEXUS_SQLSERVER_CONNECTION` antes de iniciar el juego. Ejemplo para SQL Server Express:
 
 ```powershell
-$env:NEXUS_SQLSERVER_CONNECTION = "Server=.\SQLEXPRESS;Initial Catalog=NexusCopyDb;Integrated Security=True;TrustServerCertificate=True;Connect Timeout=2"
+$env:NEXUS_SQLSERVER_CONNECTION = "Server=.\SQLEXPRESS;Initial Catalog=NexusCopyDb;Integrated Security=True;TrustServerCertificate=True;Connect Timeout=15"
 dotnet run --project .\NexusCopia.csproj
 ```
 

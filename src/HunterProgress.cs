@@ -17,7 +17,7 @@ internal sealed class HunterProgress
 /// <summary>All player progression is stored in SQL Server. No file-based save is used.</summary>
 internal static class ProgressStore
 {
-    private const string DefaultConnectionString = "Server=(localdb)\\MSSQLLocalDB;Initial Catalog=NexusCopyDb;Integrated Security=True;TrustServerCertificate=True;Connect Timeout=2";
+    private const string DefaultConnectionString = "Server=(localdb)\\MSSQLLocalDB;Initial Catalog=NexusCopyDb;Integrated Security=True;TrustServerCertificate=True;Connect Timeout=15";
     private static readonly string ConnectionString = Environment.GetEnvironmentVariable("NEXUS_SQLSERVER_CONNECTION") ?? DefaultConnectionString;
     private static readonly object Gate = new();
     private static bool _schemaReady;
@@ -109,7 +109,7 @@ internal static class ProgressStore
             var master = new SqlConnectionStringBuilder(target.ConnectionString) { InitialCatalog = "master" };
             using var adminConnection = new SqlConnection(master.ConnectionString);
             adminConnection.Open();
-            using (var createDb = new SqlCommand("IF DB_ID(@database) IS NULL EXEC(N'CREATE DATABASE ' + QUOTENAME(@database))", adminConnection))
+            using (var createDb = new SqlCommand("IF DB_ID(@database) IS NULL BEGIN DECLARE @sql nvarchar(max) = N'CREATE DATABASE ' + QUOTENAME(@database); EXEC sys.sp_executesql @sql; END", adminConnection))
             {
                 createDb.Parameters.AddWithValue("@database", database);
                 createDb.ExecuteNonQuery();
@@ -168,7 +168,7 @@ internal static class ProgressStore
     private static InvalidOperationException CreateConnectionError(Exception inner) => new(
         "Nexus Copy necesita SQL Server para cargar y guardar el progreso. Instala o inicia SQL Server LocalDB, " +
         "o configura la variable NEXUS_SQLSERVER_CONNECTION. La base NexusCopyDb y la tabla de progreso se crean automáticamente " +
-        "si la cuenta tiene permisos. Consulta la sección Base de datos SQL Server del README.md.", inner);
+        "si la cuenta tiene permisos. Consulta la sección Base de datos SQL Server del README.md.\n\nDetalle: " + inner.Message, inner);
 
     private static bool IsSqlFailure(Exception ex) => ex is SqlException or InvalidOperationException or ArgumentException;
 }
