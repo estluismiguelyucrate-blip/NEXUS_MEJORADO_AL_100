@@ -600,8 +600,9 @@ internal sealed class PlatformerForm : Form
     {
         _renderStage = "medidas";
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        g.InterpolationMode = InterpolationMode.HighQualityBicubic;
         float sx = _canvas.ClientSize.Width / 1100f, sy = _canvas.ClientSize.Height / 620f;
+        bool largeViewport = _canvas.ClientSize.Width * (long)_canvas.ClientSize.Height >= 2_500_000;
+        g.InterpolationMode = largeViewport ? InterpolationMode.Bilinear : InterpolationMode.HighQualityBicubic;
         g.ScaleTransform(sx, sy);
         var viewport = new Rectangle(0, 0, 1100, 620);
         using (var sky = new LinearGradientBrush(viewport, _dungeon.SkyTop, _dungeon.SkyBottom, LinearGradientMode.Vertical)) g.FillRectangle(sky, viewport);
@@ -632,7 +633,8 @@ internal sealed class PlatformerForm : Form
     {
         // Partículas ligeras, con movimiento distinto por mundo y coordenadas en pantalla para no marear la cámara.
         float time = _renderTicks / 60f;
-        int count = _dungeon.Id == "bosque" ? 28 : 36;
+        int count = _canvas.ClientSize.Width * (long)_canvas.ClientSize.Height >= 2_500_000
+            ? 20 : _dungeon.Id == "bosque" ? 28 : 36;
         for (int i = 0; i < count; i++)
         {
             float seed = i * 83.17f;

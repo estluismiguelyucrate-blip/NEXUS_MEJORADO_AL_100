@@ -36,7 +36,8 @@ docs/                         Arquitectura y guías de desarrollo
 - **Dificultad** recorre Recluta, Cazador y Monarca. La tarjeta de mazmorra indica el modo seleccionado.
 - **Progreso** consulta rango, experiencia, créditos, victorias, récord y estado del guardado.
 - **Configuración** y **Controles y objetivos** abren sus respectivos paneles informativos.
-- El puntero alimenta una transición interpolada de luz ambiental. El temporizador de interfaz dibuja a intervalos de 16 ms y conserva la proporción del arte 16:9.
+- El puntero alimenta una transición interpolada de luz ambiental. El arte y las tarjetas estáticas se componen una vez en una imagen en memoria; cada fotograma solo dibuja esa composición y los efectos móviles.
+- Los textos de las tarjetas se ajustan a su ancho disponible para evitar recortes. En pantallas grandes, el menú y el juego usan escalado bilineal y menos partículas para limitar el coste de renderizado.
 
 Los nombres del cazador, clase, título y habilidad vienen de `HunterCatalog`. El nombre, región, jefe y ataques de cada nivel vienen de `DungeonCatalog`; así los paneles se mantienen sincronizados con la selección que recibe `PlatformerForm`.
 

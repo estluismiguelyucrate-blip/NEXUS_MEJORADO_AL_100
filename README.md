@@ -51,6 +51,7 @@ Controles: `A/D` o flechas para moverse, `Espacio/W` para saltar, `J/X` para la 
 - El menú mantiene el arte de fondo original; los botones de juego, selección, configuración y controles son controles reales de Windows Forms editables en el diseñador.
 - El fondo conserva su composición y responde al movimiento del puntero con luz ambiental interpolada. Los paneles de cazador/mazmorra se actualizan con la selección actual.
 - La simulación de los mapas avanza a paso fijo de 60 Hz y dibuja al cazador, la cámara, los centinelas y los efectos ambientales con interpolación entre pasos para reducir tirones.
+- El arte estático del menú se cachea en memoria; los textos caben dentro de sus tarjetas y el render ajusta el escalado/partículas para pantallas grandes.
 - Recursos de arte organizados por personaje, fondo, tileset, jefe, interfaz y audio.
 
 ## Estructura del proyecto

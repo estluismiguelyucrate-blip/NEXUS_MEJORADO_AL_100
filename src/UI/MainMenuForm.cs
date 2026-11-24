@@ -12,6 +12,7 @@ internal sealed partial class MainMenuForm : Form
     private HunterProgress _profile = new();
     private OriginalMusic _music = null!;
     private Image _menuBackground = null!;
+    private Bitmap? _menuStaticFrame;
     private readonly Stopwatch _menuClock = Stopwatch.StartNew();
     private System.Windows.Forms.Timer _menuAnimation = null!;
     private long _lastMenuFrameTicks;
@@ -37,7 +38,7 @@ internal sealed partial class MainMenuForm : Form
         DoubleBuffered = true;
         KeyPreview = true;
         Cursor = Cursors.Default;
-        Resize += (_, _) => LayoutMenuButtons();
+        Resize += (_, _) => { LayoutMenuButtons(); Invalidate(); };
         LayoutMenuButtons();
 
         string artPath = Path.Combine(AppContext.BaseDirectory, "assets", "menu-background.jpeg");
@@ -68,7 +69,7 @@ internal sealed partial class MainMenuForm : Form
         {
             _menuAnimation?.Stop();
             _menuAnimation?.Dispose();
-            _music.Dispose(); _menuBackground?.Dispose();
+            _music.Dispose(); _menuStaticFrame?.Dispose(); _menuBackground?.Dispose();
         };
     }
 
@@ -107,6 +108,7 @@ internal sealed partial class MainMenuForm : Form
         btnContinue.Visible = true;
         btnContinue.Enabled = _savedExpedition is not null;
         btnContinue.Text = _savedExpedition is null ? "SIN PARTIDA" : "CONTINUAR";
+        RebuildStaticMenuFrame();
     }
 
     private void LayoutMenuButtons()
@@ -238,10 +240,11 @@ internal sealed partial class MainMenuForm : Form
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
-        if (_menuBackground is null) return;
+        if (_menuStaticFrame is null) return;
         Graphics g = e.Graphics;
         g.CompositingQuality = CompositingQuality.HighQuality;
-        g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+        g.InterpolationMode = ClientSize.Width * (long)ClientSize.Height >= 3_000_000
+            ? InterpolationMode.Bilinear : InterpolationMode.HighQualityBicubic;
         g.PixelOffsetMode = PixelOffsetMode.HighQuality;
         g.SmoothingMode = SmoothingMode.AntiAlias;
 
@@ -251,19 +254,10 @@ internal sealed partial class MainMenuForm : Form
         var scene = new RectangleF(offsetX, offsetY, DesignWidth * scale, DesignHeight * scale);
         g.Clear(Color.FromArgb(4, 5, 15));
 
-        // Keep the original key art registered with its real buttons and move the ambient light instead.
-        GraphicsState state = g.Save();
-        g.TranslateTransform(offsetX, offsetY);
-        var imageCanvas = new RectangleF(0, 0, DesignWidth * scale, DesignHeight * scale);
-        g.DrawImage(_menuBackground, imageCanvas);
-        g.Restore(state);
+        // Keep the still artwork and selection plates cached; only small effects animate per frame.
+        g.DrawImage(_menuStaticFrame, scene);
 
         DrawMenuAtmosphere(g, scene);
-        state = g.Save();
-        g.TranslateTransform(offsetX, offsetY);
-        g.ScaleTransform(scale, scale);
-        DrawSelectionCards(g);
-        g.Restore(state);
     }
 
     private void DrawSelectionCards(Graphics g)
@@ -274,10 +268,6 @@ internal sealed partial class MainMenuForm : Form
         using var card = new SolidBrush(Color.FromArgb(252, 8, 8, 22));
         using var hunterBorder = new Pen(Color.FromArgb(210, hunter.Aura), 1.5f);
         using var dungeonBorder = new Pen(Color.FromArgb(210, dungeon.Accent), 1.5f);
-        using var headerFont = new Font("Bahnschrift", 8.5f, FontStyle.Bold);
-        using var nameFont = new Font("Bahnschrift SemiBold", 14f, FontStyle.Bold);
-        using var detailFont = new Font("Bahnschrift", 8.4f, FontStyle.Regular);
-        using var mapFont = new Font("Bahnschrift SemiBold", 15f, FontStyle.Bold);
         using var white = new SolidBrush(Color.FromArgb(246, 242, 255));
         using var muted = new SolidBrush(Color.FromArgb(211, 199, 231));
         using var accentHunter = new SolidBrush(hunter.Aura);
@@ -286,18 +276,63 @@ internal sealed partial class MainMenuForm : Form
         // Reuse the art's top profile plate for the current hunter, progression and skill.
         g.FillRectangle(card, 440, 25, 402, 83);
         g.DrawRectangle(hunterBorder, 440, 25, 402, 83);
-        g.DrawString($"CAZADOR ACTIVO · {hunter.ClassName.ToUpperInvariant()} · RANGO {_profile.Rank}", headerFont, accentHunter, 458, 32);
-        g.DrawString($"{hunter.Name} · {hunter.Title}", nameFont, white, 458, 48);
-        g.DrawString($"HABILIDAD · {hunter.AbilityName} — {hunter.AbilityHint}", detailFont, muted, 458, 70);
-        g.DrawString($"{_profile.Experience} XP · {_profile.Credits} CRÉDITOS · {_profile.ClearedDungeons} MAZMORRAS", detailFont, muted, 458, 87);
+        DrawTextToFit(g, $"CAZADOR ACTIVO · {hunter.ClassName.ToUpperInvariant()} · RANGO {_profile.Rank}", "Bahnschrift", FontStyle.Bold, 8.5f, 6f, accentHunter, new RectangleF(458, 31, 366, 14));
+        DrawTextToFit(g, $"{hunter.Name} · {hunter.Title}", "Bahnschrift SemiBold", FontStyle.Bold, 14f, 10f, white, new RectangleF(458, 46, 366, 22));
+        DrawTextToFit(g, $"HABILIDAD · {hunter.AbilityName} — {hunter.AbilityHint}", "Bahnschrift", FontStyle.Regular, 8.4f, 5.8f, muted, new RectangleF(458, 69, 366, 14));
+        DrawTextToFit(g, $"{_profile.Experience} XP · {_profile.Credits} CRÉDITOS · {_profile.ClearedDungeons} MAZMORRAS", "Bahnschrift", FontStyle.Regular, 8.4f, 5.8f, muted, new RectangleF(458, 85, 366, 14));
 
         // Replace only the original map caption plate, leaving the hunter artwork unobscured.
         g.FillRectangle(card, 487, 659, 458, 80);
         g.DrawRectangle(dungeonBorder, 487, 659, 458, 80);
-        g.DrawString($"MAZMORRA {_selectedDungeon + 1}/{DungeonCatalog.All.Length} · {difficulty.Name}", headerFont, accentDungeon, 505, 663);
-        g.DrawString(dungeon.Name.ToUpperInvariant(), mapFont, white, 505, 678);
+        DrawTextToFit(g, $"MAZMORRA {_selectedDungeon + 1}/{DungeonCatalog.All.Length} · {difficulty.Name}", "Bahnschrift", FontStyle.Bold, 8.5f, 6f, accentDungeon, new RectangleF(505, 662, 422, 14));
+        DrawTextToFit(g, dungeon.Name.ToUpperInvariant(), "Bahnschrift SemiBold", FontStyle.Bold, 15f, 10f, white, new RectangleF(505, 677, 422, 24));
         string attacks = string.Join(" / ", dungeon.BossAttacks.Select(attack => attack.Name));
-        g.DrawString($"JEFE: {dungeon.BossName} · {dungeon.Region} · {attacks}", detailFont, muted, 505, 704);
+        DrawTextToFit(g, $"JEFE: {dungeon.BossName} · {dungeon.Region} · {attacks}", "Bahnschrift", FontStyle.Regular, 8.4f, 5.8f, muted, new RectangleF(505, 702, 422, 18));
+    }
+
+    private static void DrawTextToFit(Graphics g, string text, string family, FontStyle style, float maxSize, float minSize, Brush brush, RectangleF bounds)
+    {
+        float size = maxSize;
+        Font font = new(family, size, style, GraphicsUnit.Point);
+        while (size > minSize && g.MeasureString(text, font).Width > bounds.Width)
+        {
+            font.Dispose();
+            size = Math.Max(minSize, size - 0.25f);
+            font = new Font(family, size, style, GraphicsUnit.Point);
+        }
+
+        using (font)
+        using (var format = new StringFormat(StringFormat.GenericTypographic)
+        {
+            Alignment = StringAlignment.Near,
+            LineAlignment = StringAlignment.Center,
+            FormatFlags = StringFormatFlags.NoWrap,
+            Trimming = StringTrimming.EllipsisCharacter
+        })
+        {
+            g.DrawString(text, font, brush, bounds, format);
+        }
+    }
+
+    private void RebuildStaticMenuFrame()
+    {
+        if (_menuBackground is null) return;
+        var frame = new Bitmap((int)DesignWidth, (int)DesignHeight, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+        using (Graphics g = Graphics.FromImage(frame))
+        {
+            g.CompositingQuality = CompositingQuality.HighQuality;
+            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.Clear(Color.FromArgb(4, 5, 15));
+            g.DrawImage(_menuBackground, new RectangleF(0, 0, DesignWidth, DesignHeight));
+            DrawSelectionCards(g);
+        }
+
+        Bitmap? previous = _menuStaticFrame;
+        _menuStaticFrame = frame;
+        previous?.Dispose();
+        Invalidate();
     }
 
     /// <summary>Interpolated 60 FPS ambient animation: drifting embers and the hunter's pulsing aura.</summary>
@@ -324,7 +359,8 @@ internal sealed partial class MainMenuForm : Form
             g.DrawEllipse(cursorCore, pointerX - ripple * .28f, pointerY - ripple * .28f, ripple * .56f, ripple * .56f);
 
         // Deterministic particle paths make every rendered frame smooth and repeatable.
-        for (int i = 0; i < 42; i++)
+        int particleCount = ClientSize.Width * (long)ClientSize.Height >= 3_000_000 ? 24 : 42;
+        for (int i = 0; i < particleCount; i++)
         {
             float seed = i * 17.371f;
             float speed = 18 + (i % 7) * 7;
