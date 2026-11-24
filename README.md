@@ -42,10 +42,12 @@ Controles: `A/D` o flechas para moverse, `Espacio/W` para saltar y `J/X` para at
 - Combate, fragmentos coleccionables, puntos de control, vidas, barra de jefe y extracción tras derrotarlo.
 - Progresión persistente de rango E a S, experiencia, créditos, récord y mazmorras completadas.
 - Música original sintetizada en ejecución para menú y combate; tecla `M` para activarla o silenciarla.
+- El cazador del menú tiene una animación ambiental continua con balanceo, aura violeta, partículas y brillo de espada.
 - Recursos de arte organizados por personaje, fondo, tileset, jefe, interfaz y audio.
 
 La propuesta toma como inspiración general la fantasía de cazadores y portales, con universo, nombres, personajes y arte originales. Los datos de progreso se guardan en `%LOCALAPPDATA%/NexusCopy/hunter-save.json`.
 
 ## Música y recursos
 
-El juego sintetiza música original y no incorpora canciones comerciales.
+El juego sintetiza una banda sonora original de fantasía con energía de anime: cuerdas y arpegios ambientales en el menú, y percusión y capas más intensas en combate. No incorpora la canción oficial del anime ni grabaciones comerciales. El audio se genera localmente al iniciar y no requiere archivos de música externos.
+
