@@ -52,9 +52,9 @@ SqlAvailable = true;
 
 ## Estado de ejecución
 
-La corrección está en el commit `99a46c34eb7b35bcf742ae920452c1d5b59f72d2` de la rama `testing-debugging`. El resultado de compilación de GitHub Actions y los casos que requieren una instancia SQL deben añadirse aquí después de ejecutarlos. No se marca como aprobada una prueba que no se haya ejecutado.
+La corrección está en el commit `99a46c34eb7b35bcf742ae920452c1d5b59f72d2` de la rama `testing-debugging`. GitHub Actions ejecutó el workflow `Nexus Copy CI` en la rama `testing-debugging` (run 45355839846) y completó correctamente restauración, compilación Release, publicación Windows y carga del artefacto. Esto valida la compilación y el empaquetado, no los casos de interfaz ni la conexión a SQL Server. No se marca como aprobada una prueba que no se haya ejecutado.
 
 ## Integración
 
-Después de revisar la compilación y los casos de base de datos, integrar la rama `testing-debugging` en `main` mediante un pull request y repetir las comprobaciones en `main`.
+El pull request #1 se integró en `main` mediante squash después de la compilación correcta de GitHub Actions. Commit integrado: `e81c82352cd9d8d980bd5427ff882d6ca0658727`. Los casos manuales de base de datos siguen pendientes.
 
