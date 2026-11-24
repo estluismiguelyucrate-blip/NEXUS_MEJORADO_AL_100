@@ -37,8 +37,9 @@ Controles: `A/D` o flechas para moverse, `Espacio/W` para saltar y `J/X` para at
 ## Sistemas jugables
 
 - Menú principal con entrada a partida, selector de mapa y controles.
-- Tres cazadores originales seleccionables: vanguardia, arcanista y asesino, cada uno con alcance, daño y aura visual propios.
-- Tres mazmorras jugables con trazados, paletas, enemigos y jefes distintos.
+- Tres cazadores originales seleccionables con ilustraciones propias y habilidades con nombre, alcance, daño y efectos diferentes: Eclipse Gemelo, Lanza Solar y Ráfaga Esmeralda.
+- Tres mazmorras jugables con los fondos ilustrados de cada mundo: caverna del Umbral, bosque mutado y bastión en ruinas.
+- Un jefe ilustrado y dos ataques telegráficos propios por mazmorra; los centinelas patrullan, disparan, resisten varios golpes y se pueden esquivar.
 - Combate, fragmentos coleccionables, puntos de control, vidas, barra de jefe y extracción tras derrotarlo.
 - Progresión persistente de rango E a S, experiencia, créditos, récord y mazmorras completadas.
 - Música original sintetizada en ejecución para menú y combate; tecla `M` para activarla o silenciarla.
