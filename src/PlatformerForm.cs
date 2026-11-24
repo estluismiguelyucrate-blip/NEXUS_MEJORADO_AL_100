@@ -1,4 +1,5 @@
 using System.Drawing.Drawing2D;
+using System.Diagnostics;
 
 namespace NexusCopia;
 
@@ -9,6 +10,8 @@ internal sealed class PlatformerForm : Form
     private const float BossCenterX = WorldWidth - 250;
     private readonly Panel _canvas;
     private readonly System.Windows.Forms.Timer _timer;
+    private readonly Stopwatch _simulationClock = Stopwatch.StartNew();
+    private double _simulationAccumulator;
     private readonly Button _saveButton;
     private DungeonDefinition _dungeon = null!;
     private readonly DifficultyDefinition _difficulty;
@@ -80,11 +83,30 @@ internal sealed class PlatformerForm : Form
         KeyUp += (_, e) => _held.Remove(e.KeyCode);
         Deactivate += (_, _) => _held.Clear();
         if (savedRun is not null) ApplySavedExpedition(savedRun);
-        _timer = new System.Windows.Forms.Timer { Interval = 16 };
-        _timer.Tick += (_, _) => { UpdateGame(); _canvas.Invalidate(); };
+        _simulationAccumulator = 0;
+        _simulationClock.Restart();
+        _timer = new System.Windows.Forms.Timer { Interval = 8 };
+        _timer.Tick += (_, _) => AdvanceSimulation();
         _timer.Start();
         _music.PlayBattle();
         FormClosed += (_, _) => { _timer.Stop(); _timer.Dispose(); _playerSprite.Dispose(); _bossSprite.Dispose(); _dungeonBackground.Dispose(); _music.PlayMenu(); };
+    }
+
+    private void AdvanceSimulation()
+    {
+        const double fixedStep = 1.0 / 60.0;
+        _simulationAccumulator += Math.Min(_simulationClock.Elapsed.TotalSeconds, .1);
+        _simulationClock.Restart();
+        int steps = 0;
+        while (_simulationAccumulator >= fixedStep && steps < 5)
+        {
+            UpdateGame();
+            _simulationAccumulator -= fixedStep;
+            steps++;
+        }
+        // Evita que Windows provoque una ráfaga de pasos al mover o restaurar la ventana.
+        if (steps == 5 && _simulationAccumulator > fixedStep * 2) _simulationAccumulator = fixedStep;
+        _canvas.Invalidate();
     }
 
     private static Image LoadArt(string relativePath)
@@ -131,8 +153,8 @@ internal sealed class PlatformerForm : Form
     {
         _x = Math.Clamp(save.PlayerX, 0, WorldWidth - PlayerWidth);
         _y = Math.Clamp(save.PlayerY, 0, GroundY + 100);
-        _vx = Math.Clamp(save.VelocityX, -8.2f, 8.2f);
-        _vy = Math.Clamp(save.VelocityY, -18, 14);
+        _vx = Math.Clamp(save.VelocityX, -6.5f, 6.5f);
+        _vy = Math.Clamp(save.VelocityY, -12.4f, 13);
         _checkpoint = Math.Clamp(save.CheckpointX, 0, WorldWidth - PlayerWidth);
         _score = Math.Max(0, save.Score); _lives = Math.Clamp(save.Lives, 1, _difficulty.Lives);
         _bossHealth = Math.Clamp(save.BossHealth, 0, _bossMaxHealth);
@@ -192,7 +214,7 @@ internal sealed class PlatformerForm : Form
         }
         if (e.KeyCode is Keys.Space or Keys.W or Keys.Up)
         {
-            if (!_held.Contains(e.KeyCode) && _grounded && !_won && !_gameOver) { _vy = -14.2f; _grounded = false; }
+            if (!_held.Contains(e.KeyCode) && _grounded && !_won && !_gameOver) { _vy = -12.1f; _grounded = false; }
         }
         _held.Add(e.KeyCode);
         e.Handled = true;
@@ -208,13 +230,14 @@ internal sealed class PlatformerForm : Form
         if (_attackTicks > 0) _attackTicks--;
         if (_attackCooldown > 0) _attackCooldown--;
         float input = (_held.Contains(Keys.Right) || _held.Contains(Keys.D) ? 1 : 0) - (_held.Contains(Keys.Left) || _held.Contains(Keys.A) ? 1 : 0);
-        _vx += input * 1.45f;
-        _vx *= input == 0 ? .84f : .94f;
-        _vx = Math.Clamp(_vx, -8.2f, 8.2f);
+        _vx += input * (_grounded ? 1.15f : .48f);
+        _vx *= input == 0 ? (_grounded ? .76f : .985f) : .94f;
+        float maxSpeed = _grounded ? 6.5f : 5.8f;
+        _vx = Math.Clamp(_vx, -maxSpeed, maxSpeed);
         if (input != 0) _facingRight = input > 0;
         float oldBottom = _y + PlayerHeight;
         _x = Math.Clamp(_x + _vx, 0, WorldWidth - PlayerWidth);
-        _vy = Math.Min(_vy + .58f, 14);
+        _vy = Math.Min(_vy + .67f, 13);
         _y += _vy;
         _grounded = false;
         var player = new RectangleF(_x, _y, PlayerWidth, PlayerHeight);
@@ -248,7 +271,7 @@ internal sealed class PlatformerForm : Form
             if (!player.IntersectsWith(bounds)) continue;
             if (_vy > 1 && oldBottom <= enemy.Y + 13)
             {
-                enemy.Health--; _vy = -8;
+                enemy.Health--; _vy = -7.4f;
                 if (enemy.Health <= 0) { enemy.Alive = false; _score += 25; SetNotice("¡Buen salto! Centinela derrotado. +25"); }
                 else SetNotice($"Golpe de salto: centinela {enemy.Health}/{enemy.MaxHealth}. ¡Sigue atacando!");
             }
@@ -412,10 +435,10 @@ internal sealed class PlatformerForm : Form
         float dy = _y + PlayerHeight / 2 - (enemy.Y + 15);
         if (Math.Abs(dx) > 410) return;
         float length = MathF.Max(1, MathF.Sqrt(dx * dx + dy * dy));
-        float speed = _dungeon.Id == "umbral" ? 4.0f : _dungeon.Id == "bosque" ? 3.35f : 4.7f;
+        float speed = _dungeon.Id == "umbral" ? 3.25f : _dungeon.Id == "bosque" ? 3.0f : 3.55f;
         _enemyShots.Add(new CombatProjectile(enemy.X + 17, enemy.Y + 14, dx / length * speed, dy / length * speed,
             _dungeon.EnemyAttackColor, _dungeon.Id == "bosque" ? 20 : 14, _dungeon.Id == "bosque" ? 30 : 14,
-            _dungeon.Id == "bosque" ? "Espina Carmesí" : _dungeon.Id == "ciudad" ? "Orbe de Marea" : "Pulso Umbrío"));
+            _dungeon.Id == "bosque" ? "Espina Carmesí" : _dungeon.Id == "ciudad" ? "Orbe de Marea" : "Bola Umbría"));
         enemy.AttackCooldown = _dungeon.EnemyAttackCooldown;
     }
 
@@ -735,9 +758,34 @@ internal sealed class PlatformerForm : Form
         }
     }
 
-    private static void DrawCombatProjectile(Graphics g, CombatProjectile shot)
+    private void DrawCombatProjectile(Graphics g, CombatProjectile shot)
     {
         var b = shot.Bounds;
+        if (shot.Name.Contains("Bola", StringComparison.OrdinalIgnoreCase) || shot.Name.Contains("Orbe de Marea", StringComparison.OrdinalIgnoreCase))
+        {
+            float speed = MathF.Max(1, MathF.Sqrt(shot.Vx * shot.Vx + shot.Vy * shot.Vy));
+            float cx = b.X + b.Width / 2, cy = b.Y + b.Height / 2;
+            float pulse = .9f + .1f * MathF.Sin(_worldTicks * .24f);
+            using var trail = new Pen(Color.FromArgb(115, shot.Color), 7) { StartCap = LineCap.Round, EndCap = LineCap.Round };
+            using var trailCore = new Pen(Color.FromArgb(105, 255, 255, 255), 2) { StartCap = LineCap.Round, EndCap = LineCap.Round };
+            g.DrawLine(trail, cx, cy, cx - shot.Vx / speed * 27, cy - shot.Vy / speed * 27);
+            g.DrawLine(trailCore, cx, cy, cx - shot.Vx / speed * 18, cy - shot.Vy / speed * 18);
+            using var aura = new SolidBrush(Color.FromArgb(62, shot.Color));
+            g.FillEllipse(aura, cx - 17 * pulse, cy - 17 * pulse, 34 * pulse, 34 * pulse);
+            using var bodyPath = new GraphicsPath();
+            bodyPath.AddEllipse(b.X, b.Y, b.Width, b.Height);
+            using var orb = new PathGradientBrush(bodyPath)
+            {
+                CenterColor = Color.FromArgb(255, 249, 255, 255),
+                SurroundColors = [shot.Color]
+            };
+            g.FillEllipse(orb, b);
+            using var rim = new Pen(Color.FromArgb(230, Color.White), 1.5f);
+            g.DrawEllipse(rim, b);
+            using var arc = new Pen(Color.FromArgb(205, 255, 255, 255), 1.4f);
+            g.DrawArc(arc, b.X + 3, b.Y + 2, Math.Max(2, b.Width - 6), Math.Max(2, b.Height - 5), _worldTicks * 5 % 360, 210);
+            return;
+        }
         using var glow = new SolidBrush(Color.FromArgb(85, shot.Color)); g.FillEllipse(glow, b.X - 10, b.Y - 8, b.Width + 20, b.Height + 16);
         using var fill = new SolidBrush(Color.FromArgb(235, shot.Color));
         if (shot.Name.Contains("Lanza Solar", StringComparison.OrdinalIgnoreCase))

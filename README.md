@@ -42,26 +42,26 @@ Controles: `A/D` o flechas para moverse, `Espacio/W` para saltar, `J/X` para la 
 - Un jefe ilustrado y dos ataques telegráficos propios por mazmorra; los centinelas patrullan, disparan, resisten varios golpes y se pueden esquivar.
 - Trampas de púas con aviso visual, ciclo de activación, variaciones de dificultad y paso directo a la siguiente mazmorra después de cada jefe.
 - Dificultades con vidas y resistencia/ritmo de ataque diferentes. La expedición mantiene las vidas y el puntaje entre mundos.
-- Menú inicial construido con controles nativos editables en Windows Forms Designer (`MainMenuForm.Designer.cs`), además del fondo artístico y los paneles dinámicos.
+- Menú inicial conservando el fondo artístico original, con botones nativos de Windows Forms ubicados sobre los controles del diseño y editables en el Designer (`MainMenuForm.Designer.cs`).
 - Guardado y reanudación de la partida desde SQL Server: posición, checkpoint, puntaje, vidas, dificultad, jefe, fragmentos, centinelas y ciclo de trampas. Los checkpoints y las victorias también activan el guardado automático.
 - Habilidades con proyectiles reales: la Lanza Solar de Ariadna, la Ráfaga Esmeralda triple de Kael y el combo cuerpo a cuerpo Eclipse Gemelo de Soren.
 - Combate, fragmentos coleccionables, puntos de control, vidas, barra de jefe y extracción tras derrotarlo.
 - Progresión persistente de rango E a S, experiencia, créditos, récord y mazmorras completadas.
 - Música original sintetizada en ejecución para menú y combate; tecla `M` para activarla o silenciarla.
-- El cazador del menú tiene una animación ambiental continua con balanceo, aura violeta, partículas y brillo de espada.
+- El menú mantiene el arte de fondo original; los botones de juego, selección, configuración y controles son controles reales de Windows Forms editables en el diseñador.
 - Recursos de arte organizados por personaje, fondo, tileset, jefe, interfaz y audio.
 
 La propuesta toma como inspiración general la fantasía de cazadores y portales, con universo, nombres, personajes y arte originales.
 
 ## Música y recursos
 
-El juego sintetiza una banda sonora original de fantasía con energía de anime: cuerdas y arpegios ambientales en el menú, y percusión y capas más intensas en combate. No incorpora la canción oficial del anime ni grabaciones comerciales. El audio se genera localmente al iniciar y no requiere archivos de música externos.
+El juego sintetiza una banda sonora original de fantasía con energía de anime: cuerdas y arpegios ambientales en el menú, y percusión y capas más intensas en combate. No incorpora la canción oficial del anime ni grabaciones comerciales. El audio se genera localmente desde C# al iniciar y no requiere archivos de música externos.
 
 ## Base de datos SQL Server
 
 El progreso y las partidas se guardan **exclusivamente en SQL Server**, en la base `NexusCopyDb`. El perfil usa `dbo.HunterProgress`; las partidas usan `dbo.ExpeditionSave` y sus tablas relacionadas para fragmentos, centinelas y trampas. SQL Server LocalDB es la conexión predeterminada. Al iniciar, el juego crea las tablas necesarias si aún no existen. No usa archivos JSON ni otro almacenamiento para el progreso o las partidas. Si SQL Server no está instalado, iniciado o accesible, el juego muestra un error y no inicia una partida que no pueda guardar.
 
-La aplicación ya fue abierta correctamente contra SQL Server LocalDB después de corregir la consulta de creación de base. Si vas a compilar desde Visual Studio, asegúrate de restaurar los paquetes NuGet y de tener iniciada la instancia `MSSQLLocalDB`.
+La aplicación y su esquema SQL se implementan en C#. Al iniciarla, crea la base y sus tablas si la cuenta tiene permisos. Si vas a compilar desde Visual Studio, asegúrate de restaurar los paquetes NuGet y de tener iniciada la instancia `MSSQLLocalDB`.
 
 Para una instancia de SQL Server distinta, define `NEXUS_SQLSERVER_CONNECTION` antes de iniciar el juego. Ejemplo para SQL Server Express:
 
@@ -70,4 +70,4 @@ $env:NEXUS_SQLSERVER_CONNECTION = "Server=.\SQLEXPRESS;Initial Catalog=NexusCopy
 dotnet run --project .\NexusCopia.csproj
 ```
 
-El usuario de Windows debe tener permiso para crear la base la primera vez. También puedes ejecutar `database/create_database.sql` desde SQL Server Management Studio y conceder permisos sobre `NexusCopyDb`. La barra inferior y la ventana de configuración indican el estado de la conexión a SQL Server.
+El usuario de Windows debe tener permiso para crear la base la primera vez. La configuración y los guardados se ejecutan desde el cliente C# de SQL Server; el proyecto no necesita scripts Python ni SQL externos para iniciar.
