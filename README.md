@@ -29,6 +29,10 @@ dotnet publish .\NexusCopia.csproj --configuration Release --output .\artifacts\
 
 Después inicia `artifacts\NexusCopy\NexusCopia.exe`.
 
+## Entrega para Windows
+
+La compilación final probada está disponible en [NexusCopy-Final-Windows.zip](https://github.com/estluismiguelyucrate-blip/repooooo/raw/refs/heads/main/NexusCopy-Final-Windows.zip). Descomprime el archivo y ejecuta `NexusCopia.exe`. El equipo necesita el runtime de escritorio de .NET 10.
+
 Controles: `A/D` o flechas para moverse, `Espacio/W` para saltar y `J/X` para atacar.
 
 ## Sistemas jugables
