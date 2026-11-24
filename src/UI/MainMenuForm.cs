@@ -1,4 +1,6 @@
 using System.ComponentModel;
+using System.Diagnostics;
+using System.Drawing.Drawing2D;
 
 namespace NexusCopia;
 
@@ -10,6 +12,10 @@ internal sealed partial class MainMenuForm : Form
     private HunterProgress _profile = new();
     private OriginalMusic _music = null!;
     private Image _menuBackground = null!;
+    private readonly Stopwatch _menuClock = Stopwatch.StartNew();
+    private System.Windows.Forms.Timer _menuAnimation = null!;
+    private long _lastMenuFrameTicks;
+    private double _animationSeconds;
     private ExpeditionSave? _savedExpedition;
     private int _selectedDungeon;
     private int _selectedDifficulty = 1;
@@ -36,6 +42,10 @@ internal sealed partial class MainMenuForm : Form
         if (!File.Exists(artPath))
             throw new FileNotFoundException("Falta el fondo del menú. Vuelve a extraer el repositorio completo y compila NexusCopy.sln.", artPath);
         _menuBackground = Image.FromFile(artPath);
+        _lastMenuFrameTicks = _menuClock.ElapsedTicks;
+        _menuAnimation = new System.Windows.Forms.Timer { Interval = 16 };
+        _menuAnimation.Tick += (_, _) => AdvanceMenuAnimation();
+        _menuAnimation.Start();
         _selectedDungeon = Math.Clamp(_profile.ClearedDungeons, 0, DungeonCatalog.All.Length - 1);
         _savedExpedition = ProgressStore.LoadExpedition();
         UpdateMenuControls();
@@ -50,6 +60,8 @@ internal sealed partial class MainMenuForm : Form
         _music.PlayMenu();
         FormClosed += (_, _) =>
         {
+            _menuAnimation?.Stop();
+            _menuAnimation?.Dispose();
             _music.Dispose(); _menuBackground?.Dispose();
         };
     }
@@ -94,19 +106,31 @@ internal sealed partial class MainMenuForm : Form
     private void LayoutMenuButtons()
     {
         if (ClientSize.Width <= 0 || ClientSize.Height <= 0) return;
-        float sx = ClientSize.Width / DesignWidth, sy = ClientSize.Height / DesignHeight;
-        Place(btnPlay, 64, 303, 328, 38, sx, sy);
-        Place(btnDungeon, 64, 378, 328, 38, sx, sy);
-        Place(btnHunter, 64, 447, 328, 38, sx, sy);
-        Place(btnSettings, 64, 517, 328, 38, sx, sy);
-        Place(btnControls, 64, 587, 328, 38, sx, sy);
-        Place(btnDifficulty, 52, 650, 174, 38, sx, sy);
-        Place(btnContinue, 232, 650, 174, 38, sx, sy);
+        float scale = Math.Min(ClientSize.Width / DesignWidth, ClientSize.Height / DesignHeight);
+        float offsetX = (ClientSize.Width - DesignWidth * scale) / 2;
+        float offsetY = (ClientSize.Height - DesignHeight * scale) / 2;
+        Place(btnPlay, 64, 303, 328, 38, scale, offsetX, offsetY);
+        Place(btnDungeon, 64, 378, 328, 38, scale, offsetX, offsetY);
+        Place(btnHunter, 64, 447, 328, 38, scale, offsetX, offsetY);
+        Place(btnSettings, 64, 517, 328, 38, scale, offsetX, offsetY);
+        Place(btnControls, 64, 587, 328, 38, scale, offsetX, offsetY);
+        Place(btnDifficulty, 52, 650, 174, 38, scale, offsetX, offsetY);
+        Place(btnContinue, 232, 650, 174, 38, scale, offsetX, offsetY);
     }
 
-    private static void Place(Control control, int x, int y, int width, int height, float sx, float sy) =>
-        control.Bounds = new Rectangle((int)MathF.Round(x * sx), (int)MathF.Round(y * sy),
-            (int)MathF.Round(width * sx), (int)MathF.Round(height * sy));
+    private static void Place(Control control, int x, int y, int width, int height, float scale, float offsetX, float offsetY) =>
+        control.Bounds = new Rectangle((int)MathF.Round(offsetX + x * scale), (int)MathF.Round(offsetY + y * scale),
+            (int)MathF.Round(width * scale), (int)MathF.Round(height * scale));
+
+    private void AdvanceMenuAnimation()
+    {
+        long now = _menuClock.ElapsedTicks;
+        double elapsed = (now - _lastMenuFrameTicks) / (double)Stopwatch.Frequency;
+        _lastMenuFrameTicks = now;
+        // Cap a delayed UI tick so returning from another window never causes a visual jump.
+        _animationSeconds += Math.Min(elapsed, 0.05);
+        Invalidate();
+    }
 
     private void ToggleMusic()
     {
@@ -190,7 +214,63 @@ internal sealed partial class MainMenuForm : Form
     {
         base.OnPaint(e);
         if (_menuBackground is null) return;
-        e.Graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBilinear;
-        e.Graphics.DrawImage(_menuBackground, ClientRectangle);
+        Graphics g = e.Graphics;
+        g.CompositingQuality = CompositingQuality.HighQuality;
+        g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+        g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+
+        float scale = Math.Min(ClientSize.Width / DesignWidth, ClientSize.Height / DesignHeight);
+        float offsetX = (ClientSize.Width - DesignWidth * scale) / 2;
+        float offsetY = (ClientSize.Height - DesignHeight * scale) / 2;
+        var scene = new RectangleF(offsetX, offsetY, DesignWidth * scale, DesignHeight * scale);
+        g.Clear(Color.FromArgb(4, 5, 15));
+
+        // Match the 16:9 key-art canvas without stretching it on ultrawide or 16:10 screens.
+        float cameraX = MathF.Sin((float)_animationSeconds * 0.42f) * 2.3f * scale;
+        float cameraY = MathF.Sin((float)_animationSeconds * 0.67f) * 1.1f * scale;
+        GraphicsState state = g.Save();
+        g.TranslateTransform(offsetX + cameraX, offsetY + cameraY);
+        var imageCanvas = new RectangleF(0, 0, DesignWidth * scale, DesignHeight * scale);
+        g.DrawImage(_menuBackground, imageCanvas);
+        g.Restore(state);
+
+        DrawMenuAtmosphere(g, scene);
+    }
+
+    /// <summary>Interpolated 60 FPS ambient animation: drifting embers and the hunter's pulsing aura.</summary>
+    private void DrawMenuAtmosphere(Graphics g, RectangleF scene)
+    {
+        float scale = scene.Width / DesignWidth;
+        float t = (float)_animationSeconds;
+
+        // A soft, slow pulse around the hunter adds idle life without degrading the source art.
+        float pulse = 0.5f + 0.5f * MathF.Sin(t * 1.35f);
+        float centerX = scene.Left + 948 * scale;
+        float centerY = scene.Top + 410 * scale;
+        float auraSize = (190 + 12 * pulse) * scale;
+        using (var aura = new SolidBrush(Color.FromArgb((int)(10 + 8 * pulse), 112, 63, 255)))
+            g.FillEllipse(aura, centerX - auraSize / 2, centerY - auraSize * 0.72f, auraSize, auraSize * 1.44f);
+
+        // Deterministic particle paths make every rendered frame smooth and repeatable.
+        for (int i = 0; i < 42; i++)
+        {
+            float seed = i * 17.371f;
+            float speed = 18 + (i % 7) * 7;
+            float xUnit = 0.36f + Frac(MathF.Sin(seed * 1.17f) * 43758.5453f) * 0.62f;
+            float startY = Frac(MathF.Sin(seed * 2.31f) * 24634.6345f);
+            float yUnit = Frac(startY - t * speed / 768f);
+            float drift = MathF.Sin(t * (0.55f + i % 4 * 0.12f) + seed) * (5 + i % 6);
+            float x = scene.Left + xUnit * scene.Width + drift * scale;
+            float y = scene.Top + yUnit * scene.Height;
+            float size = (1.2f + i % 4 * 0.55f) * scale;
+            int alpha = 46 + (int)(55 * (0.5f + 0.5f * MathF.Sin(t * 2.4f + seed)));
+            using var glow = new SolidBrush(Color.FromArgb(alpha / 3, 153, 91, 255));
+            using var core = new SolidBrush(Color.FromArgb(alpha, 206, 179, 255));
+            g.FillEllipse(glow, x - size * 2, y - size * 2, size * 4, size * 4);
+            g.FillEllipse(core, x - size / 2, y - size / 2, size, size);
+        }
+
+        static float Frac(float value) => value - MathF.Floor(value);
     }
 }
