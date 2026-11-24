@@ -88,7 +88,9 @@ internal sealed class PlatformerForm : Form
         ResetRenderInterpolation();
         _simulationAccumulator = 0;
         _simulationClock.Restart();
-        _timer = new System.Windows.Forms.Timer { Interval = 8 };
+        // Render close to the 60 Hz simulation cadence; 125 full-scene paints per second
+        // caused needless CPU/GDI work and made timer jitter more visible on slower PCs.
+        _timer = new System.Windows.Forms.Timer { Interval = 16 };
         _timer.Tick += (_, _) => AdvanceSimulation();
         _timer.Start();
         _music.PlayBattle();

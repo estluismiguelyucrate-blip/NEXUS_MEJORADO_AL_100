@@ -271,7 +271,7 @@ internal sealed partial class MainMenuForm : Form
         HunterArchetype hunter = _profile.Hunter;
         DungeonDefinition dungeon = DungeonCatalog.All[_selectedDungeon];
         DifficultyDefinition difficulty = DifficultyCatalog.All[_selectedDifficulty];
-        using var card = new SolidBrush(Color.FromArgb(239, 8, 8, 22));
+        using var card = new SolidBrush(Color.FromArgb(252, 8, 8, 22));
         using var hunterBorder = new Pen(Color.FromArgb(210, hunter.Aura), 1.5f);
         using var dungeonBorder = new Pen(Color.FromArgb(210, dungeon.Accent), 1.5f);
         using var headerFont = new Font("Bahnschrift", 8.5f, FontStyle.Bold);
@@ -291,13 +291,13 @@ internal sealed partial class MainMenuForm : Form
         g.DrawString($"HABILIDAD · {hunter.AbilityName} — {hunter.AbilityHint}", detailFont, muted, 458, 70);
         g.DrawString($"{_profile.Experience} XP · {_profile.Credits} CRÉDITOS · {_profile.ClearedDungeons} MAZMORRAS", detailFont, muted, 458, 87);
 
-        // The lower title plate now follows the selected world instead of showing baked-in text.
-        g.FillRectangle(card, 450, 657, 540, 87);
-        g.DrawRectangle(dungeonBorder, 450, 657, 540, 87);
-        g.DrawString($"MAZMORRA {_selectedDungeon + 1}/{DungeonCatalog.All.Length} · {difficulty.Name}", headerFont, accentDungeon, 468, 662);
-        g.DrawString(dungeon.Name.ToUpperInvariant(), mapFont, white, 468, 678);
+        // Replace only the original map caption plate, leaving the hunter artwork unobscured.
+        g.FillRectangle(card, 487, 659, 458, 80);
+        g.DrawRectangle(dungeonBorder, 487, 659, 458, 80);
+        g.DrawString($"MAZMORRA {_selectedDungeon + 1}/{DungeonCatalog.All.Length} · {difficulty.Name}", headerFont, accentDungeon, 505, 663);
+        g.DrawString(dungeon.Name.ToUpperInvariant(), mapFont, white, 505, 678);
         string attacks = string.Join(" / ", dungeon.BossAttacks.Select(attack => attack.Name));
-        g.DrawString($"JEFE: {dungeon.BossName} · {dungeon.Region} · {attacks}", detailFont, muted, 468, 704);
+        g.DrawString($"JEFE: {dungeon.BossName} · {dungeon.Region} · {attacks}", detailFont, muted, 505, 704);
     }
 
     /// <summary>Interpolated 60 FPS ambient animation: drifting embers and the hunter's pulsing aura.</summary>
