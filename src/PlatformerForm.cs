@@ -160,11 +160,21 @@ internal sealed class PlatformerForm : Form
                 _bossHealth -= _profile.Hunter.Damage; _score += 50;
                 if (_bossHealth <= 0)
                 {
-                    _bossHealth = 0; _bossDefeated = true; _score += 250;
+                    _bossHealth = 0; _score += 250;
                     if (!_rewardClaimed)
                     {
                         int shards = _shards.Count(s => s.Collected);
-                        var reward = ProgressStore.Complete(_profile, _score, shards);
+                        (int Experience, int Credits, string RankBefore, string RankAfter) reward;
+                        try { reward = ProgressStore.Complete(_profile, _score, shards); }
+                        catch (InvalidOperationException ex)
+                        {
+                            _score -= 250;
+                            _bossHealth = 1;
+                            MessageBox.Show(this, ex.Message + "\n\nVuelve a conectar SQL Server y derrota al jefe para reintentar el guardado.", "No se pudo guardar en SQL Server", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            SetNotice("SQL Server no disponible. El jefe sigue vulnerable; el progreso no se guardó.");
+                            return;
+                        }
+                        _bossDefeated = true;
                         _rewardClaimed = true;
                         _rewardText = $"+{reward.Experience} XP · +{reward.Credits} créditos · Rango {reward.RankAfter}" + (reward.RankAfter != reward.RankBefore ? " · ¡ASCENSO!" : "");
                     }

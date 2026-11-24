@@ -1,4 +1,5 @@
 using System.Drawing.Drawing2D;
+using System.Diagnostics;
 
 namespace NexusCopia;
 
@@ -12,7 +13,14 @@ internal sealed class MainMenuForm : Form
     private readonly Image _menuBackground;
     private readonly Image _hunterSprite;
     private readonly System.Windows.Forms.Timer _idleTimer;
-    private double _idleTime;
+    private readonly Stopwatch _animationClock = Stopwatch.StartNew();
+    private readonly Pen _auraOuter = new(Color.FromArgb(24, 210, 111, 255), 25);
+    private readonly Pen _auraInner = new(Color.FromArgb(34, 171, 82, 255), 13);
+    private readonly Pen _swordGlow = new(Color.FromArgb(60, 155, 68, 255), 16) { StartCap = LineCap.Round, EndCap = LineCap.Round };
+    private readonly Pen _swordEdge = new(Color.FromArgb(180, 206, 142, 255), 4) { StartCap = LineCap.Round, EndCap = LineCap.Round };
+    private readonly Pen _swordCore = new(Color.FromArgb(220, 238, 226, 255), 1.6f) { StartCap = LineCap.Round, EndCap = LineCap.Round };
+    private readonly SolidBrush[] _moteBrushes = Enumerable.Range(0, 4)
+        .Select(i => new SolidBrush(Color.FromArgb(110 + i * 35, 190, 126, 255))).ToArray();
     private int _selectedDungeon;
     private string _hovered = "";
 
@@ -28,14 +36,20 @@ internal sealed class MainMenuForm : Form
         KeyPreview = true;
         Cursor = Cursors.Default;
 
-        string artPath = Path.Combine(AppContext.BaseDirectory, "assets", "backgrounds", "menu-background-clean.jpg");
+        string artPath = Path.Combine(AppContext.BaseDirectory, "assets", "menu-background.jpeg");
         string spritePath = Path.Combine(AppContext.BaseDirectory, "assets", "characters", "menu-hunter.png");
         if (!File.Exists(artPath) || !File.Exists(spritePath))
-            throw new FileNotFoundException("Faltan las capas animadas del menú. Vuelve a extraer el repositorio completo y compila NexusCopy.sln.", !File.Exists(artPath) ? artPath : spritePath);
+            throw new FileNotFoundException("Faltan los recursos del menú. Vuelve a extraer el repositorio completo y compila NexusCopy.sln.", !File.Exists(artPath) ? artPath : spritePath);
         _menuBackground = Image.FromFile(artPath);
         _hunterSprite = Image.FromFile(spritePath);
-        _idleTimer = new System.Windows.Forms.Timer { Interval = 33 };
-        _idleTimer.Tick += (_, _) => { _idleTime += 0.033; Invalidate(); };
+        _idleTimer = new System.Windows.Forms.Timer { Interval = 16 };
+        _idleTimer.Tick += (_, _) =>
+        {
+            // Limit redraw work to the hunter scene and use elapsed time so the animation
+            // keeps the same pace when Windows skips or delays a timer tick.
+            float sx = ClientSize.Width / DesignWidth, sy = ClientSize.Height / DesignHeight;
+            Invalidate(Rectangle.Round(new RectangleF(565 * sx, 75 * sy, 795 * sx, 685 * sy)));
+        };
         _idleTimer.Start();
         _selectedDungeon = Math.Clamp(_profile.ClearedDungeons, 0, DungeonCatalog.All.Length - 1);
 
@@ -44,7 +58,12 @@ internal sealed class MainMenuForm : Form
         MouseClick += HandleMenuClick;
         KeyDown += HandleKeyDown;
         _music.PlayMenu();
-        FormClosed += (_, _) => { _idleTimer.Stop(); _idleTimer.Dispose(); _music.Dispose(); _menuBackground.Dispose(); _hunterSprite.Dispose(); };
+        FormClosed += (_, _) =>
+        {
+            _idleTimer.Stop(); _idleTimer.Dispose(); _music.Dispose(); _menuBackground.Dispose(); _hunterSprite.Dispose();
+            _auraOuter.Dispose(); _auraInner.Dispose(); _swordGlow.Dispose(); _swordEdge.Dispose(); _swordCore.Dispose();
+            foreach (var brush in _moteBrushes) brush.Dispose();
+        };
     }
 
     private void HandleKeyDown(object? sender, KeyEventArgs e)
@@ -117,9 +136,15 @@ internal sealed class MainMenuForm : Form
 
     private void ChangeHunter()
     {
+        string previous = _profile.HunterId;
         int index = Array.FindIndex(HunterCatalog.All, x => x.Id == _profile.HunterId);
         _profile.HunterId = HunterCatalog.All[(index + 1) % HunterCatalog.All.Length].Id;
-        ProgressStore.Save(_profile);
+        try { ProgressStore.Save(_profile); }
+        catch (InvalidOperationException ex)
+        {
+            _profile.HunterId = previous;
+            MessageBox.Show(this, ex.Message, "No se pudo guardar en SQL Server", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
         Invalidate();
     }
 
@@ -129,13 +154,13 @@ internal sealed class MainMenuForm : Form
         {
             Text = "Configuración del cazador", StartPosition = FormStartPosition.CenterParent,
             FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false, MinimizeBox = false,
-            ClientSize = new Size(440, 250), BackColor = Color.FromArgb(15, 13, 34), ForeColor = Color.White
+            ClientSize = new Size(490, 300), BackColor = Color.FromArgb(15, 13, 34), ForeColor = Color.White
         };
         var heading = new Label { Text = "AJUSTES DE NEXUS", Font = new Font("Segoe UI", 18, FontStyle.Bold), ForeColor = Color.FromArgb(213, 190, 255), AutoSize = true, Location = new Point(28, 24) };
-        var sound = new CheckBox { Text = "Música original", Checked = _music.Enabled, ForeColor = Color.White, AutoSize = true, Location = new Point(34, 91), Font = new Font("Segoe UI", 12) };
+        var sound = new CheckBox { Text = "Música original", Checked = _music.Enabled, ForeColor = Color.White, AutoSize = true, Location = new Point(34, 82), Font = new Font("Segoe UI", 12) };
         sound.CheckedChanged += (_, _) => { if (sound.Checked != _music.Enabled) ToggleMusic(); };
-        var info = new Label { Text = "El progreso se guarda automáticamente en este equipo.\nPulsa M en cualquier momento para alternar la música.", AutoSize = true, ForeColor = Color.FromArgb(180, 180, 205), Location = new Point(34, 137), Font = new Font("Segoe UI", 9) };
-        var close = new Button { Text = "LISTO", Location = new Point(318, 194), Size = new Size(90, 34), DialogResult = DialogResult.OK, FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(63, 40, 105), ForeColor = Color.White };
+        var info = new Label { Text = $"Progreso guardado solo en SQL Server: {ProgressStore.StorageStatus}.\nLocalDB se configura automáticamente. Para otra instancia, configura NEXUS_SQLSERVER_CONNECTION.\nPulsa M para alternar la música.", AutoSize = true, MaximumSize = new Size(425, 0), ForeColor = Color.FromArgb(180, 180, 205), Location = new Point(34, 128), Font = new Font("Segoe UI", 9) };
+        var close = new Button { Text = "LISTO", Location = new Point(360, 242), Size = new Size(90, 34), DialogResult = DialogResult.OK, FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(63, 40, 105), ForeColor = Color.White };
         dialog.Controls.AddRange([heading, sound, info, close]);
         dialog.AcceptButton = close;
         dialog.ShowDialog(this);
@@ -160,7 +185,7 @@ internal sealed class MainMenuForm : Form
         base.OnPaint(e);
         Graphics g = e.Graphics;
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+        g.InterpolationMode = InterpolationMode.HighQualityBilinear;
         float sx = ClientSize.Width / DesignWidth, sy = ClientSize.Height / DesignHeight;
         g.ScaleTransform(sx, sy);
         g.DrawImage(_menuBackground, new RectangleF(0, 0, DesignWidth, DesignHeight));
@@ -171,41 +196,35 @@ internal sealed class MainMenuForm : Form
 
     private void DrawHunterIdle(Graphics g)
     {
-        float sway = MathF.Sin((float)_idleTime * 1.15f) * 3.0f;
-        float bob = MathF.Sin((float)_idleTime * 2.3f) * 2.1f;
-        RectangleF body = new(578 + sway, 91 + bob, 714, 662);
-        // The original hunter cutout gets a living violet aura and a gentle cloak-like sway.
-        using (var aura = new Pen(Color.FromArgb(34, 171, 82, 255), 13))
-        using (var glow = new Pen(Color.FromArgb(24, 210, 111, 255), 25))
-        {
-            g.DrawEllipse(glow, 810 + sway, 122 + bob, 320, 440);
-            g.DrawEllipse(aura, 835 + sway, 145 + bob, 270, 385);
-        }
+        float time = (float)_animationClock.Elapsed.TotalSeconds;
+        float sway = MathF.Sin(time * 1.25f) * 2.8f;
+        float bob = MathF.Sin(time * 2.45f) * 2.2f;
+        float breath = 1f + .0015f * MathF.Sin(time * 2.45f + .6f);
+        RectangleF body = new(637 + sway - 327.5f * (breath - 1), 90 + bob - 331 * (breath - 1), 655 * breath, 662 * breath);
+        // A larger pulse behind the cutout plus a visible shoulder-to-shoulder sway.
+        float pulse = 0.5f + 0.5f * MathF.Sin(time * 3.1f);
+        _auraOuter.Width = 22 + 7 * pulse;
+        _auraInner.Width = 11 + 4 * pulse;
+        g.DrawEllipse(_auraOuter, 810 + sway, 122 + bob, 320 + pulse * 18, 440 + pulse * 12);
+        g.DrawEllipse(_auraInner, 835 + sway, 145 + bob, 270 + pulse * 12, 385 + pulse * 8);
         g.DrawImage(_hunterSprite, body);
 
-        float pulse = 0.5f + 0.5f * MathF.Sin((float)_idleTime * 4.4f);
-        PointF sword = new(752 + sway, 637 + bob);
-        PointF tip = new(805 + sway, 574 + bob);
-        using (var glow = new Pen(Color.FromArgb((int)(35 + 50 * pulse), 155, 68, 255), 16))
-        using (var edge = new Pen(Color.FromArgb((int)(150 + 80 * pulse), 206, 142, 255), 4))
-        using (var core = new Pen(Color.FromArgb(220, 238, 226, 255), 1.6f))
-        {
-            glow.StartCap = glow.EndCap = LineCap.Round;
-            edge.StartCap = edge.EndCap = LineCap.Round;
-            core.StartCap = core.EndCap = LineCap.Round;
-            g.DrawLine(glow, sword, tip);
-            g.DrawLine(edge, sword, tip);
-            g.DrawLine(core, sword, tip);
-        }
+        PointF sword = new(785 + sway, 588 + bob);
+        PointF tip = new(435 + sway, 655 + bob + MathF.Sin(time * 2.2f) * 3.5f);
+        _swordGlow.Width = 13 + 7 * pulse;
+        _swordGlow.Color = Color.FromArgb((int)(42 + 75 * pulse), 155, 68, 255);
+        _swordEdge.Color = Color.FromArgb((int)(120 + 110 * pulse), 206, 142, 255);
+        g.DrawLine(_swordGlow, sword, tip);
+        g.DrawLine(_swordEdge, sword, tip);
+        g.DrawLine(_swordCore, sword, tip);
 
-        for (int i = 0; i < 8; i++)
+        for (int i = 0; i < 14; i++)
         {
-            float phase = (float)_idleTime * (0.65f + i * 0.035f) + i * 0.91f;
-            float x = 670 + i * 68 + MathF.Sin(phase) * 10;
-            float y = 185 + (float)((_idleTime * (25 + i * 3) + i * 97) % 470);
-            float size = 2.2f + (i % 3) * 1.2f;
-            using var mote = new SolidBrush(Color.FromArgb(100 + (int)(100 * pulse), 190, 126, 255));
-            g.FillEllipse(mote, x, y, size, size * 1.8f);
+            float phase = time * (0.75f + i * 0.025f) + i * 0.91f;
+            float x = 654 + i * 47 + MathF.Sin(phase) * 18 + sway * .4f;
+            float y = 145 + (time * (33 + i * 4) + i * 61) % 510;
+            float size = 3 + (i % 3) * 1.7f;
+            g.FillEllipse(_moteBrushes[i % _moteBrushes.Length], x, y, size, size * 2.1f);
         }
     }
 
@@ -263,7 +282,7 @@ internal sealed class MainMenuForm : Form
         // The artwork's status captions are replaced with accurate local state.
         using var footerBg = new SolidBrush(Color.FromArgb(255, 3, 5, 15));
         g.FillRectangle(footerBg, 0, 735, 470, 33);
-        g.DrawString("●  PROGRESO LOCAL · GUARDADO AUTOMÁTICO", statsFont, muted, 20, 741);
+        g.DrawString($"●  {ProgressStore.StorageStatus}", statsFont, muted, 20, 741);
         g.FillRectangle(footerBg, 1200, 735, 160, 33);
         g.DrawString(_music.Enabled ? "♫ MÚSICA: SÍ" : "♫ MÚSICA: NO", statsFont, muted, new RectangleF(1208, 741, 148, 20));
     }

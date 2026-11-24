@@ -4,7 +4,7 @@ Proyecto independiente de **NEXUS**, concebido como una aventura 2D de cazadores
 
 ## Ejecutar
 
-Requiere Windows y el SDK de .NET 10 con Windows Forms. Clona el repositorio y ejecuta la restauración desde la carpeta recién creada (la misma que contiene `NexusCopy.sln`):
+Requiere Windows, el SDK de .NET 10 con Windows Forms y una instancia de SQL Server LocalDB o SQL Server Express en ejecución. Clona el repositorio y ejecuta la restauración desde la carpeta recién creada (la misma que contiene `NexusCopy.sln`):
 
 ```powershell
 git clone https://github.com/estluismiguelyucrate-blip/repooooo.git
@@ -45,9 +45,21 @@ Controles: `A/D` o flechas para moverse, `Espacio/W` para saltar y `J/X` para at
 - El cazador del menú tiene una animación ambiental continua con balanceo, aura violeta, partículas y brillo de espada.
 - Recursos de arte organizados por personaje, fondo, tileset, jefe, interfaz y audio.
 
-La propuesta toma como inspiración general la fantasía de cazadores y portales, con universo, nombres, personajes y arte originales. Los datos de progreso se guardan en `%LOCALAPPDATA%/NexusCopy/hunter-save.json`.
+La propuesta toma como inspiración general la fantasía de cazadores y portales, con universo, nombres, personajes y arte originales.
 
 ## Música y recursos
 
 El juego sintetiza una banda sonora original de fantasía con energía de anime: cuerdas y arpegios ambientales en el menú, y percusión y capas más intensas en combate. No incorpora la canción oficial del anime ni grabaciones comerciales. El audio se genera localmente al iniciar y no requiere archivos de música externos.
 
+## Base de datos SQL Server
+
+El progreso se guarda **exclusivamente en SQL Server**, en la base `NexusCopyDb` y tabla `dbo.HunterProgress`. SQL Server LocalDB es la conexión predeterminada. Al iniciar, el juego crea la base, la tabla y el perfil si aún no existen. No usa archivos JSON ni otro almacenamiento para el progreso. Si SQL Server no está instalado, iniciado o accesible, el juego muestra un error y no inicia una partida que no pueda guardar.
+
+Para una instancia de SQL Server distinta, define `NEXUS_SQLSERVER_CONNECTION` antes de iniciar el juego. Ejemplo para SQL Server Express:
+
+```powershell
+$env:NEXUS_SQLSERVER_CONNECTION = "Server=.\SQLEXPRESS;Initial Catalog=NexusCopyDb;Integrated Security=True;TrustServerCertificate=True;Connect Timeout=2"
+dotnet run --project .\NexusCopia.csproj
+```
+
+El usuario de Windows debe tener permiso para crear la base la primera vez. También puedes ejecutar `database/create_database.sql` desde SQL Server Management Studio y conceder permisos sobre `NexusCopyDb`. La barra inferior y la ventana de configuración indican el estado de la conexión a SQL Server.

@@ -6,7 +6,10 @@ internal static class Program
     private static void Main()
     {
         ApplicationConfiguration.Initialize();
-        Application.Run(new MainMenuForm());
+        try { Application.Run(new MainMenuForm()); }
+        catch (InvalidOperationException ex)
+        {
+            MessageBox.Show(ex.Message, "SQL Server requerido", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
     }
 }
-

@@ -11,6 +11,7 @@
   <ItemGroup>
     <None Update="assets\**\*" CopyToOutputDirectory="PreserveNewest" />
     <None Update="levels\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="database\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="7.1.2" />
   </ItemGroup>
 </Project>
-
