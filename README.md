@@ -4,14 +4,30 @@ Proyecto independiente de **NEXUS**, concebido como una aventura 2D de cazadores
 
 ## Ejecutar
 
-Requiere Windows y el SDK de .NET 10 con Windows Forms. Al clonar, primero restaura los recursos de compilación, porque `obj/` no se guarda en Git:
+Requiere Windows y el SDK de .NET 10 con Windows Forms. Al clonar, abre la solución del repositorio y restaura los recursos de compilación, porque `obj/` no se guarda en Git:
 
 ```powershell
 dotnet restore .\NexusCopy.sln
 dotnet run --project .\NexusCopia.csproj
 ```
 
-En Visual Studio, abre `NexusCopy.sln`, espera a que termine la restauración de NuGet y luego inicia `NexusCopia`. Si sale `NETSDK1004` indicando que falta `obj\project.assets.json`, ejecuta el comando `dotnet restore` anterior en la terminal ubicada en la carpeta del proyecto.
+En Visual Studio usa **Archivo → Abrir → Proyecto o solución** y selecciona `NexusCopy.sln` en la carpeta que acabas de clonar. Espera a que termine la restauración y ejecuta el proyecto `NexusCopia` con la configuración `Release | Any CPU`. No abras una carpeta antigua desde Descargas: Visual Studio conserva la última ruta aunque el repositorio se haya clonado en otro lugar.
+
+Si Visual Studio muestra `NETSDK1004` o no encuentra `NexusCopia.exe`, abre una terminal en la carpeta que contiene `NexusCopy.sln` y ejecuta:
+
+```powershell
+dotnet restore .\NexusCopy.sln
+dotnet build .\NexusCopy.sln --configuration Release
+dotnet run --project .\NexusCopia.csproj --configuration Release
+```
+
+Para generar una carpeta ejecutable de entrega (requiere el runtime de escritorio .NET 10 en el equipo destino):
+
+```powershell
+dotnet publish .\NexusCopia.csproj --configuration Release --output .\artifacts\NexusCopy
+```
+
+Después inicia `artifacts\NexusCopy\NexusCopia.exe`.
 
 Controles: `A/D` o flechas para moverse, `Espacio/W` para saltar y `J/X` para atacar.
 
@@ -30,4 +46,3 @@ La propuesta toma como inspiración general la fantasía de cazadores y portales
 ## Música y recursos
 
 El juego sintetiza música original y no incorpora canciones comerciales.
-
