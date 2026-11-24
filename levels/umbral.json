@@ -1,0 +1,8 @@
+{
+  "id": "umbral",
+  "title": "Ruinas del Umbral",
+  "description": "Una ruta de plataformas entre ruinas suspendidas. Encuentra fragmentos y derrota al guardián.",
+  "art": { "background": "assets/backgrounds/umbral.png", "tileset": "assets/tilesets/umbral.png" },
+  "boss": { "name": "El Guardián del Umbral", "art": "assets/bosses/guardian.png", "health": 5 }
+}
+
