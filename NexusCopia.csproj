@@ -10,6 +10,7 @@
   </PropertyGroup>
   <ItemGroup>
     <None Update="assets\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="levels\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
 
